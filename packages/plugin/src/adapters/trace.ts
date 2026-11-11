@@ -9,18 +9,22 @@ export class FileTraceSink implements TraceSink {
   private queue: Promise<void> = Promise.resolve();
   private failure: unknown;
   private prunedDay: string | undefined;
+
   constructor(
     private readonly root: string,
     private level: TraceLevel,
     private readonly retentionDays: number,
     private readonly clock: Clock = { now: () => new Date() },
   ) {}
+
   getLevel(): TraceLevel {
     return this.level;
   }
+
   setLevel(level: TraceLevel): void {
     this.level = level;
   }
+
   emit(event: TraceEvent): Promise<void> {
     if (this.level === 'off') return Promise.resolve();
     const safe = traceMetadata(event);
@@ -53,6 +57,7 @@ export class FileTraceSink implements TraceSink {
     });
     return operation;
   }
+
   async flush(): Promise<void> {
     await this.queue;
     if (this.failure) throw this.failure;

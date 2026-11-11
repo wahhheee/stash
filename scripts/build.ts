@@ -24,6 +24,7 @@ await build({
     neverBundle: [/^@deepseek-ai\//, 'zod', 'semver'],
   },
 });
+
 await build({
   cwd: 'packages/plugin',
   entry: { client: 'src/client/index.tsx' },
@@ -46,5 +47,6 @@ await build({
     footer: 'return module.exports; } });',
   },
 });
+
 await copyFile('LICENSE', 'packages/plugin/LICENSE');
 await copyFile('README.md', 'packages/plugin/README.md');

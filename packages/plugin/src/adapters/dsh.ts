@@ -14,10 +14,12 @@ declare module '@deepseek-ai/cordis' {
     stash: StashService;
   }
 }
+
 /** DSH 服务边界负责注册、生命周期和宿主版本解析。 */
 export class StashService extends TypertRemoteService {
   static inject = ['commands'];
   private readonly runtime: StashRuntime;
+
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'stash', { namespace: 'stash' });
     const require = createRequire(import.meta.url);
@@ -78,6 +80,7 @@ export class StashService extends TypertRemoteService {
       };
     }, 'stash: trace');
   }
+
   /** 获取不含敏感信息的插件状态。 */
   @Remote
   getStatus(): StashStatus {

@@ -12,6 +12,7 @@ export const StatusSchema: z.ZodType<StashStatus> = z
     trace: z.enum(['off', 'metadata', 'content']),
   })
   .strict();
+
 /** 外部包的端点契约由 Host 与 Client 共享，避免两份 wire 描述漂移。 */
 export const TYPERT_REMOTE = createTypertRemoteInfo(
   {
@@ -27,7 +28,9 @@ export const TYPERT_REMOTE = createTypertRemoteInfo(
   },
   z,
 );
+
 export default TYPERT_REMOTE;
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespaceMap {
     stash: { getStatus(): Promise<RemoteResult<StashStatus>> };

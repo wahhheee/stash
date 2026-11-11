@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { dshBin } from './harness.ts';
+
 export async function startWebHost(
   home: string,
   env: NodeJS.ProcessEnv,

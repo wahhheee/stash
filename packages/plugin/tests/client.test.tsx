@@ -3,7 +3,9 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest';
 import { StatusPanel } from '../src/client/StatusPanel.tsx';
 import { en, zh } from '../src/client/locales.ts';
+
 afterEach(cleanup);
+
 it('展示连接、版本、失败与重连，卸载时释放订阅', async () => {
   const status = {
     version: '0.1.0',

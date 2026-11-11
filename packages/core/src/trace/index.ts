@@ -1,4 +1,5 @@
 export type TraceLevel = 'off' | 'metadata' | 'content';
+
 export type TraceKind =
   | 'plugin.start'
   | 'plugin.stop'
@@ -12,6 +13,7 @@ export type TraceKind =
   | 'switch.change'
   | 'lock.wait'
   | 'error';
+
 /** metadata 仅允许白名单字段；任意正文只允许放在 content 中。 */
 export interface TraceEvent {
   readonly v: 1;
@@ -27,6 +29,7 @@ export interface TraceEvent {
   readonly decision?: 'none' | 'full' | 'delta';
   readonly content?: string;
 }
+
 export function traceMetadata(event: TraceEvent): TraceEvent {
   return {
     v: event.v,

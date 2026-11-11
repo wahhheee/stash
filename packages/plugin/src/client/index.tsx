@@ -6,7 +6,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import remote from '../adapters/remote.ts';
 import { en, zh } from './locales.ts';
 import { StatusPanel } from './StatusPanel.tsx';
+
 export const inject = ['remote', 'slots', 'locale', 'sidebarRightTabs'];
+
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const unmount = await ctx.remote.$mount(remote);
   const ui = ctx.inject(['remote.stash', 'slots', 'locale', 'sidebarRightTabs'], (scope) => {

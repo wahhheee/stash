@@ -1,5 +1,10 @@
 # 变更记录
 
+## 未发布
+
+- 统一函数、类型、类方法与大块定义之间的空行，加入 ESLint 自动修复和间距检查。
+- 将 noEmit 写入共享 TypeScript 配置，修复编辑器对 allowImportingTsExtensions 的报错。
+
 ## 0.1.0 — 2026-11-11
 
 - 建立严格 TypeScript 三包工程、构建、依赖边界与测试基线。

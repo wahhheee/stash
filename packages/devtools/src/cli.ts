@@ -1,4 +1,5 @@
 import { inspectRoot, readReport } from '../../plugin/src/adapters/diagnostics.ts';
+
 const [command, target, ...extra] = process.argv.slice(2);
 try {
   if (command !== 'verify' || !target || extra.length) {

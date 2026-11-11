@@ -23,6 +23,7 @@ export function testEnvironment(home: string): NodeJS.ProcessEnv {
     npm_config_registry: process.env.npm_config_registry ?? 'https://registry.npmmirror.com/',
   };
 }
+
 export async function runNode(
   args: string[],
   env: NodeJS.ProcessEnv,
@@ -57,7 +58,9 @@ export async function runNode(
     });
   });
 }
+
 export const dshBin = resolve('node_modules/@deepseek-ai/dsh/lib/bin.js');
+
 export async function createHarnessFixture(): Promise<{
   root: string;
   home: string;

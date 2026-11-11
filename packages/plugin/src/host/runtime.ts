@@ -2,8 +2,10 @@ import { FileTraceSink } from '../adapters/trace.ts';
 import { doctor, writeReport } from '../adapters/diagnostics.ts';
 import type { ResolvedConfig } from '../adapters/config.ts';
 import type { StashStatus } from '../types.ts';
+
 export class StashRuntime {
   readonly trace: FileTraceSink;
+
   constructor(
     readonly config: ResolvedConfig,
     readonly version: string,
@@ -11,6 +13,7 @@ export class StashRuntime {
   ) {
     this.trace = new FileTraceSink(config.memoryRoot, config.trace, config.traceRetentionDays);
   }
+
   status(): StashStatus {
     return {
       version: this.version,
@@ -20,6 +23,7 @@ export class StashRuntime {
       trace: this.trace.getLevel(),
     };
   }
+
   async command(
     raw: string,
     callId?: string,

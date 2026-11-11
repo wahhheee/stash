@@ -7,15 +7,19 @@ import { FileTraceSink } from '../src/adapters/trace.ts';
 import { doctor, inspectRoot, readReport, writeReport } from '../src/adapters/diagnostics.ts';
 import { resolveConfig } from '../src/adapters/config.ts';
 import { StashRuntime } from '../src/host/runtime.ts';
+
 const roots: string[] = [];
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
+
 async function temporary(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'stash-test-'));
   roots.push(root);
   return root;
 }
+
 describe('诊断基础设施', () => {
   it('配置拒绝无效保留期与级别', () => {
     expect(() => resolveConfig({ traceRetentionDays: 0 })).toThrow();

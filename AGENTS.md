@@ -19,7 +19,7 @@ Node.js 22.18+、pnpm 12.18.0。pnpm install --frozen-lockfile 安装依赖，pn
 
 TypeScript 严格模式，禁止 any 逃逸。跨边界输入先校验，失败明确返回，不把不可读伪装成空结果。持久格式必须有版本；未知版本拒绝处理，不覆盖。
 
-代码注释使用简体中文。功能文档和注释只描述现状；变更原因放决策记录、CHANGELOG 和提交信息。提交采用 Conventional Commits + 简体中文。
+代码注释使用简体中文。功能文档和注释只描述现状；变更原因放决策记录、CHANGELOG 和提交信息。提交采用 Conventional Commits + 简体中文。提交前运行 pnpm check 并确保全部通过。
 
 模型可见文字统一放 core/src/templates。阶段一该表面为空。凭据不入库，不进入日志、夹具、快照或报告。普通测试只连接本地 mock。临时材料放 .exclude；它由 .git/info/exclude 排除，不在 .gitignore 重复配置。测试使用独立临时 DSH_HOME，不修改日常 profile。
 

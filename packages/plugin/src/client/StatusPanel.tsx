@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { StashStatus } from '../types.ts';
 import type { LocaleKey } from './locales.ts';
+
 export interface StatusPanelProps {
   readonly t: (key: LocaleKey) => string;
   readonly load: () => Promise<StashStatus>;
   readonly subscribeReset: (listener: () => void) => () => void;
 }
+
 export function StatusPanel({ t, load, subscribeReset }: StatusPanelProps): ReactNode {
   const [state, setState] = useState<{ status?: StashStatus; error?: boolean }>({});
   const [revision, setRevision] = useState(0);

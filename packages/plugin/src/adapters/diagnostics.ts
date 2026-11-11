@@ -19,6 +19,7 @@ import { redact } from './redaction.ts';
 import type { ResolvedConfig } from './config.ts';
 
 export const SUPPORTED_DSH = '>=0.2.2-rc.1 <0.3.0-0';
+
 export const TraceSchema = z
   .object({
     v: z.literal(1),
@@ -48,8 +49,10 @@ export const TraceSchema = z
     content: z.string().optional(),
   })
   .strict();
+
 const CheckSchema = z.object({ name: z.string(), ok: z.boolean(), detail: z.string() }).strict();
 export type Check = z.infer<typeof CheckSchema>;
+
 export const ReportSchema = z
   .object({
     format: z.literal(1),
@@ -68,8 +71,10 @@ export const ReportSchema = z
     trace: z.array(TraceSchema.omit({ content: true }).strict()),
   })
   .strict();
+
 export type Report = z.infer<typeof ReportSchema>;
 const MAX_BYTES = 8 * 1024 * 1024;
+
 async function boundedRead(path: string): Promise<Buffer> {
   const stat = await lstat(path);
   if (!stat.isFile() || stat.size > MAX_BYTES) throw new Error('文件不是普通文件或超过 8 MiB');
@@ -96,6 +101,7 @@ async function boundedRead(path: string): Promise<Buffer> {
     await file.close();
   }
 }
+
 /** 离线检查只读；不存在的根目录作为未初始化状态报告。 */
 export async function inspectRoot(root: string): Promise<Check[]> {
   const checks: Check[] = [];
@@ -142,6 +148,7 @@ export async function inspectRoot(root: string): Promise<Check[]> {
   }
   return checks;
 }
+
 export async function doctor(config: ResolvedConfig, hostVersion: string): Promise<Check[]> {
   const checks: Check[] = [
     {
@@ -168,6 +175,7 @@ export async function doctor(config: ResolvedConfig, hostVersion: string): Promi
   }
   return [...checks, ...(await inspectRoot(config.memoryRoot))];
 }
+
 export async function writeReport(
   config: ResolvedConfig,
   version: string,
@@ -212,6 +220,7 @@ export async function writeReport(
   await writeFile(path, gzipSync(redact(JSON.stringify(report))), { flag: 'wx', mode: 0o600 });
   return path;
 }
+
 export async function readReport(path: string): Promise<Report> {
   const bytes = await boundedRead(path);
   return ReportSchema.parse(

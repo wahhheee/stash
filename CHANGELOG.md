@@ -8,3 +8,4 @@
 - 实现有保留期的 trace、去正文的 gzip 报告与只读 verify。
 - 验证真实宿主安装、卸载重载、Gateway 和隔离条件下的请求一致性。
 - 记录外部 Typert 生成器和 SDK 自定义命令限制；不含记忆功能。
+- CI 实测修正 pnpm 12 在 Linux/macOS 的原生入口启动；next 巡检同步更新共享 Zod schema 依赖。

@@ -16,9 +16,9 @@ jobs:
     env:
       npm_config_registry: https://registry.npmjs.org/
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: pnpm
@@ -37,15 +37,15 @@ jobs:
     env:
       npm_config_registry: https://registry.npmjs.org/
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: 安装宿主 next 通道
-        run: pnpm --recursive update '@deepseek-ai/dsh*@next'
+        run: pnpm --recursive update '@deepseek-ai/dsh*@next' zod
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test

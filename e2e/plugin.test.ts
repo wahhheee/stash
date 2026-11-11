@@ -58,11 +58,13 @@ it('tarball 可安装到全新 profile，产物没有私有包运行时依赖', 
       '--pack-destination',
       fixture.root,
     ];
+    // pnpm 12 在三大平台都可能提供原生入口；仅脚本入口交给 Node。
+    const javascriptEntry = ['.js', '.cjs', '.mjs'].some((suffix) => pnpmEntry.endsWith(suffix));
     await runNode(
-      pnpmEntry.endsWith('.exe') ? packArgs : [pnpmEntry, ...packArgs],
+      javascriptEntry ? [pnpmEntry, ...packArgs] : packArgs,
       fixture.env,
       resolve('.'),
-      pnpmEntry.endsWith('.exe') ? pnpmEntry : process.execPath,
+      javascriptEntry ? process.execPath : pnpmEntry,
     );
     const tarball = (await readdir(fixture.root)).find((name) => name.endsWith('.tgz'))!;
     await fixture.cli('--profile', 'test', '--from-default-profile', 'sdk', '--dump-config');

@@ -1,0 +1,10 @@
+node_modules/
+lib/
+coverage/
+*.tgz
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+packages/plugin/LICENSE
+packages/plugin/README.md

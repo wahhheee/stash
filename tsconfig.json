@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "types": ["node", "vitest/globals"],
+    "paths": { "@wahhheee/stash-core": ["./packages/core/src/index.ts"] }
+  },
+  "include": ["packages/**/*.ts", "packages/**/*.tsx", "scripts/**/*.ts", "e2e/**/*.ts", "*.ts"],
+  "exclude": ["**/lib", "node_modules", ".exclude"]
+}

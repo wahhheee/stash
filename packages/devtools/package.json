@@ -1,0 +1,10 @@
+{
+  "name": "@wahhheee/stash-devtools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@wahhheee/stash-core": "workspace:*",
+    "@wahhheee/dsh-stash": "workspace:*"
+  }
+}

@@ -1,0 +1,12 @@
+packages:
+  - packages/*
+allowBuilds:
+  esbuild: true
+  node-pty: true
+  koffi: true
+  '@deepseek-ai/dsh-subprocess-local': true
+  protobufjs: false
+  '@google/genai': false
+  node-addon-require-builtin: false
+overrides:
+  '@opentelemetry/api': 1.9.0

@@ -1,69 +1,69 @@
 # stash 调试手册
 
-## 一次完整验证
+## 开发验证
 
-```sh
-pnpm install --frozen-lockfile
-pnpm check
+Node.js 22.18+、pnpm 12.18.0。执行 pnpm install --frozen-lockfile，再运行 pnpm check。检查顺序是格式、lint、构建、类型、单元/宿主/客户端和真实进程端到端。仅构建产物位于 packages/plugin/lib；根 README 和 LICENSE 随构建复制，不提交生成文件。
+
+普通测试只使用本地 mock，每个测试使用临时 DSH_HOME、DSH_AGENTS_HOME 和独立工作区，不读取日常 profile 或凭据。链接开发循环为修改、pnpm build、重启专用 profile、刷新页面。Desktop 安装使用插件管理器，不通过 CLI 修改保留的 desktop profile。
+
+## 命令
+
+Web/Desktop 输入框支持：
+
+```text
+/stash status
+/stash context
+/stash render
+/stash explain 10
+/stash doctor
+/stash doctor --bundle
+/stash trace metadata
+/stash trace off
 ```
 
-构建位于 packages/plugin/lib，打包同时复制根 README 和 LICENSE。它们是生成文件，不提交。check 先构建后做类型与宿主测试，适用于全新检出。
+status 展示版本、工作区、记忆目录与预算；context 比较可见状态和当前状态；render 输出现在完整注入的文本；explain 给出当前实例最近的决策、位置、原因及哈希。命令不产生模型消息。
 
-分别运行时：pnpm build、pnpm typecheck、pnpm lint、pnpm test、pnpm test:e2e。修改格式用 pnpm format。
+锁定 SDK 只识别内置命令，/stash 会进入模型对话，不应传入 SDK run。自动化的人类命令使用 Web Gateway commands/execute；SDK 验收通过捕获本地 mock 请求验证工具与记忆。SDK 的 /compact 是宿主内置命令，可用于压缩恢复验收。
 
-测试使用临时 DSH_HOME、DSH_AGENTS_HOME 和工作区，仅继承启动所需的系统环境变量。模型只连本地 mock，凭据是占位值。SDK 的进程、Web 服务和临时目录由夹具关闭；不要把真实凭据加入夹具。
+## 磁盘与故障
 
-## 安装与开发循环
+memoryRoot/<WorkspaceId>/ 包含 workspace.json、RULES.md、notes/、.journal.jsonl 和 .decisions-<SessionId>.jsonl。先通过 status 确定目标工作区。不要手工改日志或版本字段。
 
-Web 的初始化、安装命令见 README。先用 --dump-config 确认 stash 包和配置；遇到加载故障先检查 lib/index.js、lib/client.js 是否存在。
+普通文件与目录链接、损坏 YAML、未知版本、损坏日志链、规则超预算或常见凭据会明确失败。外部编辑将在下一请求扫描并写入修改日志；只保留实际观察到的版本，无法重建扫描之间的编辑器中间版本。
 
-链接安装后：修改源码 → pnpm build → 停止并重新运行该 profile → 刷新页面。SDK 关闭 HMR；Web 默认只监视配置，代码监听需额外配置。基线不依赖外部包源码热重载。真实 Cordis 测试覆盖插件卸载、命令移除和再次挂载。
+.lock 可能是活动写入，也可能来自中断进程。遇到 STASH_LOCKED，先重试并运行 doctor；只有确认访问该目录的所有 DSH 进程都已停止后，才人工移除该工作区的 .lock。保留 .pending.json，让下次请求完成恢复。若 pending 与当前文件同时被外部修改，停止恢复并报冲突，应先备份目录再人工核对，不强行覆盖。
 
-Desktop 通过插件管理器的“添加插件”输入绝对目录，可选大陆镜像源，安装后点“立即启用”。CLI 拒绝修改保留名称 desktop；不要手工更改用户的桌面 profile。独立验证时，启动进程设置临时 DSH_HOME、DSH_AGENTS_HOME 与 Electron --user-data-dir，确保与日常安装的数据隔离。
+单文件读取上限 32 MiB；修改日志和决策记录当前不自动清理，接近上限时应备份并安排后续维护。文件系统故障不报告写入成功。该事务处理进程中断，不承诺网络文件系统与突然断电的完整一致性。
 
-插件安装是单条双面记录，客户端由 dsh.client 自动装载。看不到侧栏时依次检查插件已启用、客户端加载错误、Remote 连接。浏览器产物必须是宿主模块工厂，不可直接输出 ESM；bundle.test.ts 会执行产物验证该契约。
-
-## 人类命令与 Web 自动化
-
-在 Web/Desktop 会话输入框直接输入 /stash status、/stash doctor、/stash doctor --bundle。命令通过宿主 commands 执行，只增加 command/run、command/done 事件，不产生模型消息。
-
-SDK 0.2.2-rc.1 只识别内置命令，/stash 会进入模型对话。测试采用计划中的退路：宿主测试直接调用 ctx.commands.execute；端到端通过已认证的 Web Gateway 调用 commands/execute。e2e/web.test.ts 包含本地 token 换取会话 cookie、session/create、commands/execute、报告读取与 CLI verify 的完整示例。token 与 cookie 仅在内存中，不存入仓库。
-
-## trace、报告与故障
-
-trace 默认关闭。/stash trace metadata 开启当前插件实例的元数据记录；content 允许正文，off 停止新记录。命令不写配置文件；持久设置在插件配置中修改。重载后采用配置值。
-
-记录按 UTC 日写入 memoryRoot/.trace/YYYY-MM-DD.jsonl，单实例顺序追加，每天首次写入清理超期普通文件。metadata 使用字段白名单，常见 sk- 密钥和 Bearer 凭据脱敏；这不是任意正文的通用隐私过滤器。当前阶段没有会话正文收集。
-
-写盘失败不会伪装成功；宿主日志和用户错误包含调用 ID，trace 可写时也记录该 ID。flush 保留写入故障，修复权限后应重启插件。日志命名空间为 stash。
-
-doctor 检查支持版本、根目录读写删除权限、trace 格式与版本。尚无记忆文件修改日志、锁、重定向表或投影缓存，因此这些检查留到对应阶段。
-
---bundle 生成 memoryRoot/.reports/stash-UUID.json.gz。format: 1 包含版本、生效配置、检查结果、最近七个 trace 文件中的至多 200 条元数据；任何 trace 正文都剥离，不附环境变量或会话日志。读文件与解压各限制 8 MiB；未来版本、损坏 JSON、非普通文件明确失败。超限 trace 保留在原位置并报告错误，不自动截断。
+## 离线工具
 
 ```sh
 pnpm devtools verify /path/to/memory
 pnpm devtools verify /path/to/report.json.gz
+pnpm devtools render /path/to/memory/WORKSPACE_ID
+pnpm devtools view /path/to/memory/WORKSPACE_ID /RULES.md
+pnpm devtools journal /path/to/memory/WORKSPACE_ID
+pnpm devtools reconcile /path/to/memory/WORKSPACE_ID /path/to/DSH_HOME/sessions SESSION_ID
 ```
 
-verify 默认只读。目录不存在返回未初始化；有失败检查或格式错误退出码 1；参数错误 2；全部通过 0。报告校验反映采样时的状态，不代表当前磁盘状态。
+以上命令只读。render 使用默认 1600 token 索引预算；自定义配置下应使用宿主 /stash render 查看精确文本。离线 view 完整输出文件，不给在线工具签发读取凭据。journal 包含记忆全文，请只在合适的位置查看。
 
-## 宿主契约与 CI
+reconcile 使用宿主 persistence 的 read 句柄和 Session surface 投影，按决策记录引用的修改日志 ID 重建当时的实际记忆，再核对决策与实际消息。需要同时保留会话日志、工作区修改日志和决策记录；不靠当前文件或时间戳猜测历史。输出区分 OK 和没有发出模型请求的尝试，缺失材料明确失败。
 
-锁定 DSH 0.2.2-rc.1。真实宿主契约覆盖 commands、严格 Remote 参数校验、插件卸载重载，以及 agent 作用域提示和工具隔离。分叉、压缩、工具 meta、pre-step 的完整契约将随阶段二至四首次使用时加入；本阶段没有依赖这些行为的生产代码。
+verify 检查版本、哈希链、文件与日志的一致性、锁、pending 和 trace。尚未观察到的外部编辑会暂时报不一致，下次正常请求扫描后可消除。成功退出 0，检查失败 1，参数错误 2。未知 workspace 格式不覆盖。
 
-SDK 请求对照显式关闭 time-context、agent-instructions、plugin-package-inventory-deepseek 和 session-log-deepseek。相同配置、相同输入、安装前后捕获完整 JSON 请求并比较序列化字节。前两项隔离时间和机器目录；后两项避免宿主插件清单、随机日志 ID 的自然差异。插件不修改生产 profile 的这些设置。
+## trace 与报告
 
-每次 push/PR：Linux 全部检查；Windows 单元、集成、客户端、链接和 tarball 冒烟。夜间/手动：Windows 全量、macOS 安装冒烟、DSH next 通道兼容检查。next 失败记录 warning，不阻止锁定版本交付。CI 覆盖官方 npm 源，国内开发默认 npmmirror；普通流程无 API secret。
+trace 默认 off；metadata 只记录白名单元数据，content 允许正文。/stash trace 只改变当前实例，持久配置由插件设置管理。文件按 UTC 日写入 .trace/，按 traceRetentionDays 清理，常见 sk- 和 Bearer 凭据脱敏。
 
-## 阶段一实测记录
+决策记录独立于 trace，始终只包含位置、版本 ID、配置、原因和哈希，没有正文。它用于重放，当前没有自动保留期限。
 
-2026-11-11，Windows，DSH 0.2.2-rc.1：
+报告在 .reports/stash-UUID.json.gz，format: 1，包含版本、生效配置、doctor 结果与至多 200 条 trace 元数据。始终剥离正文，不自动附记忆、决策记录或会话日志；文件读取和解压上限各 8 MiB。不要直接对外发送含全文的 journal。
 
-- Web：全新 profile 本地链接；浏览器 stash 页显示 0.1.0、宿主 0.2.2-rc.1 和已连接。
-- Desktop：独立 DSH_HOME 与 Electron 数据目录；插件管理器安装本地目录、启用，stash 页显示相同版本及已连接。
-- SDK：本地 mock 对话、安装前后完整请求一致；新 profile tarball 安装后可完成 mock 对话。
-- Web Gateway：status、doctor --bundle 成功；导出的报告通过离线 CLI verify。
-- 测试没有使用真实 DeepSeek 密钥。
+## 行为评估
 
-平台 CI 的执行结果以对应提交的 GitHub Actions 为准，本地记录不替代 Linux/macOS 验收。
+packages/devtools/src/evaluation.ts 导出四个阶段二任务及 evaluateBehavior。运行器提供隔离会话执行、每次任务的 token/延迟、人工或外部判定的 passed、scopeExpanded、openedBody 和 evidence；框架支持重复执行并汇总遵守率、条件扩大率与索引直接成功率。普通测试只验证框架统计，未运行真实模型评估，也不把 mock 的成功当成真实行为成绩。
+
+## 验证范围
+
+本地 Windows 覆盖核心解析、预算、模板、两个独立 Node 进程并发、Cordis 生命周期、客户端、真实 SDK、多会话共享、工具结果确认、外部编辑、/compact 恢复、离线 reconcile、Web Gateway 和 tarball 安装。Linux/macOS 结果以 CI 为准。阶段二未执行 Desktop 人工视觉检查；阶段一的隔离 Desktop 安装记录见 0001 决策记录。

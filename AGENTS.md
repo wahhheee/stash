@@ -1,6 +1,6 @@
 # stash 开发约定
 
-当前版本是阶段一基础设施，不提供记忆读写、检索或上下文注入。产品现状见 docs/design.md，长期目标见 docs/roadmap-design.md。
+当前版本是阶段二，提供工作区规则与笔记读写、常驻上下文和离线重放；不提供会话记忆与历史检索。产品现状见 docs/design.md，长期目标见 docs/roadmap-design.md。
 
 ## 架构
 
@@ -21,6 +21,6 @@ TypeScript 严格模式，禁止 any 逃逸。跨边界输入先校验，失败�
 
 代码注释使用简体中文。功能文档和注释只描述现状；变更原因放决策记录、CHANGELOG 和提交信息。提交采用 Conventional Commits + 简体中文。提交前运行 pnpm check 并确保全部通过。
 
-模型可见文字统一放 core/src/templates。阶段一该表面为空。凭据不入库，不进入日志、夹具、快照或报告。普通测试只连接本地 mock。临时材料放 .exclude；它由 .git/info/exclude 排除，不在 .gitignore 重复配置。测试使用独立临时 DSH_HOME，不修改日常 profile。
+模型可见文字统一放 core/src/templates。工具 schema、快照、增量与错误均由模板导出。凭据不入库，不进入日志、夹具、快照或报告。普通测试只连接本地 mock。临时材料放 .exclude；它由 .git/info/exclude 排除，不在 .gitignore 重复配置。测试使用独立临时 DSH_HOME，不修改日常 profile。
 
 DSH 升级须运行宿主契约和端到端测试。宿主接口改动集中在 adapters。发布前检查 tarball，不发布 core/devtools，不自动公开仓库或发布 npm。

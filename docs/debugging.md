@@ -29,11 +29,13 @@ status 展示版本、工作区、记忆目录与预算；context 比较可见�
 
 memoryRoot/<WorkspaceId>/ 包含 workspace.json、RULES.md、notes/、.journal.jsonl 和 .decisions-<SessionId>.jsonl。先通过 status 确定目标工作区。不要手工改日志或版本字段。
 
-普通文件与目录链接、损坏 YAML、未知版本、损坏日志链、规则超预算或常见凭据会明确失败。外部编辑将在下一请求扫描并写入修改日志；只保留实际观察到的版本，无法重建扫描之间的编辑器中间版本。
+普通文件与目录链接、损坏 YAML、未知版本、损坏日志链、规则超预算或常见凭据会明确失败。请求前按文件清单、mtime 与大小发现外部编辑；有变化才读取正文和计算哈希。保持相同时间与大小的手改可能暂时漏检，可用显式 memory_view 读取目标或重启专用实例重新建缓存。写前目标文件版本校验、doctor 与离线检查不依赖这个缓存。只保留实际观察到的版本，无法重建扫描之间的编辑器中间版本。
 
 .lock 可能是活动写入，也可能来自中断进程。遇到 STASH_LOCKED，先重试并运行 doctor；只有确认访问该目录的所有 DSH 进程都已停止后，才人工移除该工作区的 .lock。保留 .pending.json，让下次请求完成恢复。若 pending 与当前文件同时被外部修改，停止恢复并报冲突，应先备份目录再人工核对，不强行覆盖。
 
-单文件读取上限 32 MiB；修改日志和决策记录当前不自动清理，接近上限时应备份并安排后续维护。文件系统故障不报告写入成功。该事务处理进程中断，不承诺网络文件系统与突然断电的完整一致性。
+.journal.jsonl 每次只追加新记录。中断留下半条 JSON 时，只有存在匹配 pending 且完整前缀有效才允许恢复；没有 pending 或日志中间损坏会明确失败，不自动丢弃数据。pending 的操作已经记录时不重复追加。doctor、verify、journal 和 reconcile 不修复文件，需由正常宿主访问执行恢复。
+
+单文件上限 32 MiB；修改日志和决策记录当前不自动清理，接近上限时应备份并安排后续维护。追加容量在替换记忆文件前检查。文件系统故障不报告写入成功。该事务处理进程中断，不承诺网络文件系统与突然断电的完整一致性。
 
 ## 离线工具
 
@@ -50,13 +52,15 @@ pnpm devtools reconcile /path/to/memory/WORKSPACE_ID /path/to/DSH_HOME/sessions 
 
 reconcile 使用宿主 persistence 的 read 句柄和 Session surface 投影，按决策记录引用的修改日志 ID 重建当时的实际记忆，再核对决策与实际消息。需要同时保留会话日志、工作区修改日志和决策记录；不靠当前文件或时间戳猜测历史。输出区分 OK 和没有发出模型请求的尝试，缺失材料明确失败。
 
-verify 检查版本、哈希链、文件与日志的一致性、锁、pending 和 trace。尚未观察到的外部编辑会暂时报不一致，下次正常请求扫描后可消除。成功退出 0，检查失败 1，参数错误 2。未知 workspace 格式不覆盖。
+verify 检查版本、哈希链、文件与日志的一致性、锁、pending 和 trace。尚未观察到的外部编辑会暂时报不一致，宿主发现并记录后可消除；同时间同大小修改须先显式读取或重建缓存。成功退出 0，检查失败 1，参数错误 2。未知 workspace 格式不覆盖。
+
+正常 memory_write 成功结果只显示路径、预算和 replace 删除的行。若请求与写入之间出现外部规则变化，下一请求可以补发包含自身修改的差异；这是保守确认，不代表写入重复执行。新引入规则引用、嵌套调用也可能补发。排查时使用 context 和 explain 比较可见状态；reconcile 同时支持缺少 trusted 字段的旧记录和新记录。
 
 ## trace 与报告
 
 trace 默认 off；metadata 只记录白名单元数据，content 允许正文。/stash trace 只改变当前实例，持久配置由插件设置管理。文件按 UTC 日写入 .trace/，按 traceRetentionDays 清理，常见 sk- 和 Bearer 凭据脱敏。
 
-决策记录独立于 trace，始终只包含位置、版本 ID、配置、原因和哈希，没有正文。它用于重放，当前没有自动保留期限。
+决策记录独立于 trace，始终只包含位置、版本 ID、配置、原因和哈希，没有正文。它用于重放，当前没有自动保留期限。该文件仍完整校验并整体原子替换；追加与 pending 恢复只用于修改日志。长会话的决策记录仍有随历史增长的读写成本。
 
 报告在 .reports/stash-UUID.json.gz，format: 1，包含版本、生效配置、doctor 结果与至多 200 条 trace 元数据。始终剥离正文，不自动附记忆、决策记录或会话日志；文件读取和解压上限各 8 MiB。不要直接对外发送含全文的 journal。
 
@@ -66,4 +70,4 @@ packages/devtools/src/evaluation.ts 导出四个阶段二任务及 evaluateBehav
 
 ## 验证范围
 
-本地 Windows 覆盖核心解析、预算、模板、两个独立 Node 进程并发、Cordis 生命周期、客户端、真实 SDK、多会话共享、工具结果确认、外部编辑、/compact 恢复、离线 reconcile、Web Gateway 和 tarball 安装。Linux/macOS 结果以 CI 为准。阶段二未执行 Desktop 人工视觉检查；阶段一的隔离 Desktop 安装记录见 0001 决策记录。
+本地 Windows 覆盖核心解析、预算、模板、缓存命中与失效、追加日志残片恢复、两个独立 Node 进程并发、Cordis 生命周期、客户端、真实 SDK、多会话共享、简短写入确认、请求期间的外部编辑与补发、重启、/compact 恢复、离线 reconcile、Web Gateway 和 tarball 安装。Linux/macOS 结果以 CI 为准。阶段二未执行 Desktop 人工视觉检查；阶段一的隔离 Desktop 安装记录见 0001 决策记录。

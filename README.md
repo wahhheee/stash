@@ -1,6 +1,6 @@
 # stash
 
-DSH 工作区记忆插件。当前版本 0.2.0 提供工作区规则与笔记读写、常驻上下文、压缩后恢复、状态面板和离线重放。
+DSH 工作区记忆插件。当前版本 0.2.1 提供工作区规则与笔记读写、常驻上下文、压缩后恢复、状态面板和离线重放。
 
 ## 开发
 
@@ -45,14 +45,18 @@ Desktop：在“插件 → 添加插件”中输入 packages/plugin 的绝对目
 
 ```sh
 pnpm --dir packages/plugin pack --pack-destination ../..
-pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.2.0.tgz
+pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.2.1.tgz
 ```
 
 尚未发布 npm 包。唯一分发包为 @wahhheee/dsh-stash；core 和 devtools 均为私有工作区包。
 
 ## 工作区记忆
 
-插件启用后固定开启工作区记忆。新会话首次请求注入规则和笔记索引；本会话写入由工具结果确认，其他会话或编辑器改动在下一请求以增量通知生效。压缩后重新注入最新完整快照。
+插件启用后固定开启工作区记忆。新会话首次请求注入规则和笔记索引；普通自身写入由简短工具结果确认，不重复发送完整规则。其他会话或编辑器改动在下一请求以增量通知生效；请求与写入交错时允许保守补发包含自身修改的差异。新引入的规则引用和嵌套调用也按保守补发处理。压缩后重新注入最新完整快照。
+
+请求前检查文件清单、mtime 与大小，仅变化文件重新读取和哈希；同时间同大小的外部修改可能暂时漏检。显式读取、写前目标版本校验和离线检查读取真实内容。子 Agent 只读；多个会话基于同一旧版本修改时，冲突者需重新读取，不自动合并。
+
+修改日志直接追加，保留 pending 供中断恢复；无匹配 pending 的残缺日志明确报错。决策日志仍整体原子替换，用于离线重放。故障处理见调试手册。
 
 在插件设置中可配置 rulesBudgetTokens（默认 1600）、indexBudgetTokens（1600）、viewBudgetTokens（4000）及 externalRuleUpdates（next-request 或 next-compaction）。预算为宿主估算值，配置修改后重载生效。
 
@@ -90,7 +94,7 @@ pnpm devtools verify /path/to/stash-report.json.gz
 - packages/plugin：Host、Client、DSH 与文件系统适配器。
 - packages/devtools：离线校验及隔离宿主测试夹具。
 - [工程设计](docs/design.md)、[调试手册](docs/debugging.md)、[开发约定](AGENTS.md)。
-- [目标设计](docs/roadmap-design.md)、[阶段规划](docs/roadmap-plan.md)仅描述规划；[决策记录](docs/decisions/0001-phase-one-host-contracts.md)记录实际差异。
+- [目标设计](docs/roadmap-design.md)、[阶段规划](docs/roadmap-plan.md)仅描述规划；[阶段二决策记录](docs/decisions/0002-workspace-memory.md)记录实际差异与收尾取舍。
 
 记忆按 DSH 工作区共享。可以对模型说“以后提交信息用简体中文”，由 memory_write 保存到 /RULES.md。笔记位于 /notes/，可用 memory_view 阅读。完整读取后才能覆盖或删除；工具写入和已观察到的外部编辑都有修改历史。会话路径、历史检索、开关界面和回滚尚未提供。
 

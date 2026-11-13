@@ -8,7 +8,7 @@ afterEach(cleanup);
 
 it('展示连接、版本、失败与重连，卸载时释放订阅', async () => {
   const status = {
-    version: '0.2.0',
+    version: '0.2.1',
     hostVersion: '0.2.2-rc.1',
     phase: 2 as const,
     memoryEnabled: true as const,
@@ -32,7 +32,7 @@ it('展示连接、版本、失败与重连，卸载时释放订阅', async () =
     />,
   );
   expect(screen.getByRole('status').textContent).toBe(zh.connecting);
-  await screen.findByText('0.2.0');
+  await screen.findByText('0.2.1');
   fireEvent.click(screen.getByRole('button', { name: zh.refresh }));
   await screen.findByText(zh.disconnected);
   act(() => reset());

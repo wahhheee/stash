@@ -43,7 +43,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         return envelope.result.value;
       };
       expect(await invoke('stash/getStatus', {})).toMatchObject({
-        version: '0.2.0',
+        version: '0.2.1',
         memoryEnabled: true,
       });
       const { sessionId } = await invoke<{ sessionId: string }>('session/create', {
@@ -58,7 +58,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         });
       expect((await execute('/stash status')).result).toMatchObject({
         kind: 'success',
-        text: expect.stringContaining('stash 0.2.0'),
+        text: expect.stringContaining('stash 0.2.1'),
       });
       const bundle = await execute('/stash doctor --bundle');
       expect(bundle.result.kind).toBe('success');

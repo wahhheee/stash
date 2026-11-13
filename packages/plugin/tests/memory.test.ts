@@ -1,11 +1,27 @@
-import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
+import {
+  mkdtemp,
+  rm,
+  writeFile,
+  readFile,
+  mkdir,
+  stat,
+  utimes,
+  appendFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { FileMemoryStore, memoryFile } from '../src/adapters/memory-store.ts';
 import { WorkspaceMemory } from '../src/host/memory.ts';
+import type * as Fs from 'node:fs/promises';
 
 const roots: string[] = [];
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof Fs>();
+  return { ...fs, readFile: vi.fn(fs.readFile) };
+});
+
 const meter = { estimate: (text: string) => Math.ceil(text.length / 4) };
 
 const config = {
@@ -143,4 +159,117 @@ it('两个独立 Node 进程对同一版本写入，只有一个提交成功', a
   const failure = results.find((result) => result.status === 'rejected');
   expect(failure?.status === 'rejected' && String(failure.reason)).toContain('STASH_STALE_READ');
   expect(await store.journal('w')).toHaveLength(2);
+});
+
+it('重复观察复用正文和日志缓存，mtime、大小及删除分别失效', async () => {
+  const { root, store } = await fixture();
+  const path = join(root, 'w', 'RULES.md');
+  const journalPath = join(root, 'w', '.journal.jsonl');
+  await writeFile(path, '- 甲');
+  await utimes(path, 1700000000, 1700000000);
+  await store.observe('w');
+  const reads = (target: string) =>
+    vi.mocked(readFile).mock.calls.filter(([p]) => p === target).length;
+  const initialReads = [reads(path), reads(journalPath)];
+  await store.observe('w');
+  await store.observe('w');
+  expect([reads(path), reads(journalPath)]).toEqual(initialReads);
+  expect(await store.journal('w')).toHaveLength(1);
+
+  await writeFile(path, '- 乙');
+  await utimes(path, 1700000001, 1700000001);
+  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 乙');
+  const stamp = await stat(path);
+  await writeFile(path, '- 新增长规则');
+  await utimes(path, stamp.atime, stamp.mtime);
+  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 新增长规则');
+  await rm(path);
+  await store.observe('w');
+  expect((await store.journal('w')).map((c) => c.after?.content ?? null)).toEqual([
+    '- 甲',
+    '- 乙',
+    '- 新增长规则',
+    null,
+  ]);
+});
+
+it('同时间同大小外部修改允许扫描缓存命中，但写前版本校验仍拒绝覆盖', async () => {
+  const { root, store, a } = await fixture();
+  await a.write({ path: '/RULES.md', op: 'create', content: '- 甲' }, '1');
+  const path = join(root, 'w', 'RULES.md');
+  await utimes(path, 1700000000, 1700000000);
+  await a.view('/RULES.md');
+  await store.observe('w');
+  await writeFile(path, '- 乙');
+  await utimes(path, 1700000000, 1700000000);
+  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 甲');
+  await expect(
+    a.write({ path: '/RULES.md', op: 'replace', content: '- 丙' }, '2'),
+  ).rejects.toMatchObject({ code: 'STASH_STALE_READ' });
+  expect(await readFile(path, 'utf8')).toBe('- 乙');
+});
+
+it('修改日志直接追加，损坏尾部只在存在匹配 pending 时恢复', async () => {
+  const { root, store } = await fixture();
+  const first = await store.write('w', '/RULES.md', '- 甲', null);
+  const journalPath = join(root, 'w', '.journal.jsonl');
+  const pendingPath = join(root, 'w', '.pending.json');
+  const original = await readFile(journalPath);
+  const change = {
+    v: 1,
+    id: 'interrupted',
+    workspaceId: 'w',
+    path: '/RULES.md',
+    before: first.after,
+    after: memoryFile('- 中文恢复'),
+    timestamp: new Date().toISOString(),
+    actor: 'a',
+    callId: '2',
+    op: 'replace',
+  };
+  const record = Buffer.from(JSON.stringify(change) + '\n');
+  // 截断在 UTF-8 汉字内部也必须能按原始字节识别。
+  const cut = record.indexOf(Buffer.from('中文恢复')) + 1;
+  await appendFile(journalPath, record.subarray(0, cut));
+  await expect(store.observe('w')).rejects.toThrow();
+  await writeFile(pendingPath, JSON.stringify(change));
+  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 中文恢复');
+  expect(await readFile(journalPath)).toEqual(Buffer.concat([original, record]));
+  await writeFile(pendingPath, JSON.stringify(change));
+  await store.observe('w');
+  expect(await store.journal('w')).toHaveLength(2);
+  expect(await readFile(journalPath)).toEqual(Buffer.concat([original, record]));
+});
+
+it('恢复拒绝无关尾部、日志链损坏和外部覆盖，不截断已有数据', async () => {
+  const { root, store } = await fixture();
+  const first = await store.write('w', '/RULES.md', '- 甲', null);
+  const journalPath = join(root, 'w', '.journal.jsonl');
+  const pendingPath = join(root, 'w', '.pending.json');
+  const original = await readFile(journalPath, 'utf8');
+  const change = {
+    v: 1,
+    id: 'interrupted',
+    workspaceId: 'w',
+    path: '/RULES.md',
+    before: first.after,
+    after: memoryFile('- 乙'),
+    timestamp: new Date().toISOString(),
+    actor: 'a',
+    callId: '2',
+    op: 'replace',
+  };
+  await writeFile(pendingPath, JSON.stringify(change));
+  const unrelated = original + '{"v":99';
+  await writeFile(journalPath, unrelated);
+  await expect(store.observe('w')).rejects.toThrow();
+  expect(await readFile(journalPath, 'utf8')).toBe(unrelated);
+  const broken = original.replace('"v":1', '"v":99') + JSON.stringify(change).slice(0, 20);
+  await writeFile(journalPath, broken);
+  await expect(store.observe('w')).rejects.toThrow();
+  expect(await readFile(journalPath, 'utf8')).toBe(broken);
+  await writeFile(journalPath, original);
+  await writeFile(join(root, 'w', 'RULES.md'), '- 用户改写');
+  await expect(store.observe('w')).rejects.toMatchObject({ code: 'STASH_STALE_READ' });
+  expect(await readFile(journalPath, 'utf8')).toBe(original);
 });

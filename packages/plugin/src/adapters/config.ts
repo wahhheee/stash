@@ -7,6 +7,10 @@ export interface Config {
   trace?: TraceLevel;
   traceRetentionDays?: number;
   memoryRoot?: string;
+  rulesBudgetTokens?: number;
+  indexBudgetTokens?: number;
+  viewBudgetTokens?: number;
+  externalRuleUpdates?: 'next-request' | 'next-compaction';
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -20,12 +24,37 @@ export const Config: Schema<Config> = Schema.object({
     .default(7)
     .description('Trace 保留天数（UTC 日历日）。'),
   memoryRoot: Schema.string().description('记忆根目录；相对路径以 DSH_HOME 为基准。'),
+  rulesBudgetTokens: Schema.number()
+    .step(1)
+    .min(128)
+    .max(32000)
+    .default(1600)
+    .description('工作区规则预算。'),
+  indexBudgetTokens: Schema.number()
+    .step(1)
+    .min(128)
+    .max(32000)
+    .default(1600)
+    .description('常驻笔记索引预算。'),
+  viewBudgetTokens: Schema.number()
+    .step(1)
+    .min(256)
+    .max(64000)
+    .default(4000)
+    .description('单次读取预算。'),
+  externalRuleUpdates: Schema.union(['next-request', 'next-compaction'])
+    .default('next-request')
+    .description('外部规则更新时机。'),
 });
 
 export interface ResolvedConfig {
   trace: TraceLevel;
   traceRetentionDays: number;
   memoryRoot: string;
+  rulesBudgetTokens: number;
+  indexBudgetTokens: number;
+  viewBudgetTokens: number;
+  externalRuleUpdates: 'next-request' | 'next-compaction';
 }
 
 export function resolveConfig(input: Config = {}): ResolvedConfig {
@@ -35,6 +64,10 @@ export function resolveConfig(input: Config = {}): ResolvedConfig {
   const expanded = root ? expandHomePath(root) : join(home, 'memory');
   return {
     trace: config.trace ?? 'off',
+    rulesBudgetTokens: config.rulesBudgetTokens ?? 1600,
+    indexBudgetTokens: config.indexBudgetTokens ?? 1600,
+    viewBudgetTokens: config.viewBudgetTokens ?? 4000,
+    externalRuleUpdates: config.externalRuleUpdates ?? 'next-request',
     traceRetentionDays: config.traceRetentionDays ?? 7,
     memoryRoot: isAbsolute(expanded) ? expanded : resolve(home, expanded),
   };

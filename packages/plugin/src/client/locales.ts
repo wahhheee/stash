@@ -5,7 +5,7 @@ export const en = {
   disconnected: 'Host unavailable',
   version: 'Plugin version',
   host: 'DSH version',
-  phase: 'Infrastructure ready. Memory features are not enabled.',
+  phase: 'Workspace memory and resident context are enabled.',
   refresh: 'Refresh',
   description: 'Plugin status and host connection',
 };
@@ -17,7 +17,7 @@ export const zh: typeof en = {
   disconnected: '宿主不可用',
   version: '插件版本',
   host: 'DSH 版本',
-  phase: '基础设施已就绪，记忆功能尚未启用。',
+  phase: '工作区记忆与常驻上下文已启用。',
   refresh: '刷新',
   description: '插件状态与宿主连接',
 };

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Context } from '@deepseek-ai/cordis';
 import Commands from '@deepseek-ai/dsh-commands';
+import TokenMeter from '@deepseek-ai/dsh-token-meter';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import Gateway from '@deepseek-ai/dsh-api-gateway';
 import RemoteAccess from '@deepseek-ai/dsh-api-remote-access';
@@ -17,11 +18,12 @@ import { expect, it } from 'vitest';
 import Stash from '../lib/index.js';
 import { TYPERT } from '../lib/typert.host.js';
 
-it('真实 Cordis 命令、Remote、卸载重载与模型表面隔离', async () => {
+it('真实 Cordis 命令、Remote、卸载重载与作用域清理', async () => {
   const ctx = new Context();
   const root = await mkdtemp(join(tmpdir(), 'stash-host-'));
   try {
     await mountAgentLoopTestDependencies(ctx);
+    await ctx.plugin(TokenMeter);
     await ctx.plugin(Commands);
     await ctx.plugin(TypertRegistry);
     await ctx.plugin(RemoteAccess);
@@ -35,7 +37,7 @@ it('真实 Cordis 命令、Remote、卸载重载与模型表面隔离', async ()
     const peer = new Peer(ctx, { principal: { kind: 'owner' } });
     const invoke = (args: Record<string, unknown> = {}) =>
       ctx.typertGateway.invoke({ namespace: 'stash', method: 'getStatus', args, peer });
-    expect(await invoke()).toMatchObject({ version: '0.1.0', phase: 1, memoryEnabled: false });
+    expect(await invoke()).toMatchObject({ version: '0.2.0', phase: 2, memoryEnabled: true });
     await expect(invoke({ secret: 'unexpected' })).rejects.toThrow();
     const command = await ctx.commands.execute(
       agent,
@@ -47,10 +49,13 @@ it('真实 Cordis 命令、Remote、卸载重载与模型表面隔离', async ()
       kind: 'success',
       text: expect.stringContaining('bundle:'),
     });
-    expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: agent }))).toBe(baseline);
+    expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: agent }))).toContain(
+      'Workspace memory',
+    );
     expect(agent.session.snapshotEvents().some((e) => e.type === 'user/message')).toBe(false);
     await plugin.dispose();
     definition();
+    expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: agent }))).toBe(baseline);
     expect(ctx.commands.find(agent, 'stash')).toBeUndefined();
     await expect(invoke()).rejects.toThrow();
     await ctx.plugin(Stash, { memoryRoot: root });
@@ -65,6 +70,7 @@ it('宿主支持 agent 作用域提示与工具，彼此不泄漏', async () => 
   const ctx = new Context();
   try {
     await mountAgentLoopTestDependencies(ctx);
+    await ctx.plugin(TokenMeter);
     const harness = await mountAgentLoopTestHarness(ctx);
     const a = await harness.create(SessionId('scope-a'));
     const b = await harness.create(SessionId('scope-b'));

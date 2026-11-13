@@ -1,0 +1,187 @@
+import {
+  StashError,
+  memoryPath,
+  composeResident,
+  parseNote,
+  archiveNote,
+  GUIDE,
+  viewResult,
+  writeResult,
+  budgetDetail,
+  rulesUpdate,
+} from '@wahhheee/stash-core';
+import type { TokenEstimator, MemoryBudgets, ResidentState } from '@wahhheee/stash-core';
+import type { FileMemoryStore } from '../adapters/memory-store.ts';
+import { digest } from '../adapters/memory-store.ts';
+import { containsSecret } from '../adapters/redaction.ts';
+
+export interface WriteInput {
+  path: string;
+  op: 'create' | 'append' | 'edit' | 'replace' | 'archive' | 'delete';
+  content?: string | undefined;
+  old?: string | undefined;
+  new?: string | undefined;
+}
+
+/** 读取凭据只存在于当前 agent；完整连续读完才允许覆盖。 */
+export class WorkspaceMemory {
+  private readonly reads = new Map<string, string>();
+  private readonly cursors = new Map<string, { path: string; revision: string; offset: number }>();
+
+  constructor(
+    readonly store: FileMemoryStore,
+    readonly workspaceId: string,
+    readonly sessionId: string,
+    readonly meter: TokenEstimator,
+    readonly config: MemoryBudgets,
+  ) {}
+
+  async observe(): Promise<{ state: ResidentState; journalId: string | null }> {
+    const observed = await this.store.observe(this.workspaceId);
+    const state = composeResident(observed.files, this.meter, this.config.indexBudgetTokens);
+    const used = this.meter.estimate(state.rules);
+    if (used > this.config.rulesBudgetTokens)
+      throw new StashError(
+        'STASH_BUDGET_EXCEEDED',
+        budgetDetail(used, this.config.rulesBudgetTokens),
+      );
+    return { state, journalId: observed.journalId };
+  }
+
+  async actual(): Promise<ResidentState> {
+    return (await this.observe()).state;
+  }
+
+  async view(path: string, cursor?: string): Promise<string> {
+    memoryPath(path);
+    let text: string;
+    let file = false;
+    if (path === '/.guide.md') text = GUIDE;
+    else if (path === '/' || path === '/notes' || path.endsWith('/')) {
+      const files = await this.store.snapshot(this.workspaceId);
+      text = [...files]
+        .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
+        .map(
+          ([p, content]) =>
+            p +
+            (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
+        )
+        .join('\n');
+    } else {
+      const value = await this.store.read(this.workspaceId, path);
+      if (!value) throw new StashError('STASH_NOT_FOUND', '文件不存在');
+      text = value.content;
+      file = true;
+    }
+    if (containsSecret(text)) throw new StashError('STASH_SECRET', '文件包含凭据');
+    const revision = digest(text);
+    let offset = 0;
+    if (cursor) {
+      const progress = this.cursors.get(cursor);
+      if (!progress || progress.path !== path || progress.revision !== revision)
+        throw new StashError('STASH_STALE_READ', '续读标识已失效');
+      offset = progress.offset;
+    } else this.reads.delete(path);
+    let end = text.length;
+    const fits = (n: number) =>
+      this.meter.estimate(viewResult(path, text.slice(offset, n), revision + ':' + n)) <=
+      this.config.viewBudgetTokens;
+    if (!fits(end)) {
+      let low = offset,
+        high = end;
+      while (low < high) {
+        const mid = Math.ceil((low + high) / 2);
+        if (fits(mid)) low = mid;
+        else high = mid - 1;
+      }
+      end = low;
+      if (end === offset) throw new StashError('STASH_BUDGET_EXCEEDED', '读取预算不足');
+    }
+    if (end < text.length) {
+      const next = revision + ':' + end;
+      this.cursors.set(next, { path, revision, offset: end });
+      return viewResult(path, text.slice(offset, end), next);
+    }
+    if (file) this.reads.set(path, revision);
+    return viewResult(path, text.slice(offset));
+  }
+
+  async write(input: WriteInput, callId: string): Promise<{ text: string; state: ResidentState }> {
+    const path = memoryPath(input.path, true);
+    const destructive = ['edit', 'replace', 'archive', 'delete'].includes(input.op);
+    const expected = input.op === 'create' ? null : destructive ? this.reads.get(path) : undefined;
+    if (destructive && expected === undefined)
+      throw new StashError('STASH_STALE_READ', '需要先完整读取');
+    return this.store.transact(
+      this.workspaceId,
+      path,
+      expected,
+      this.sessionId,
+      callId,
+      input.op,
+      (files) => {
+        const before = files.get(path);
+        let content: string | null;
+        if (input.op !== 'create' && before === undefined)
+          throw new StashError('STASH_NOT_FOUND', '文件不存在');
+        switch (input.op) {
+          case 'create':
+          case 'replace':
+            content = input.content!;
+            break;
+          case 'append':
+            content = before! + input.content!;
+            break;
+          case 'edit': {
+            if (!input.old || before!.split(input.old).length !== 2)
+              throw new StashError('STASH_INVALID_DATA', '旧文本必须唯一');
+            content = before!.replace(input.old, () => input.new!);
+            break;
+          }
+          case 'archive':
+            if (path === '/RULES.md') throw new StashError('STASH_UNSUPPORTED', '不能归档规则');
+            content = archiveNote(before!);
+            break;
+          case 'delete':
+            if (path === '/RULES.md')
+              throw new StashError('STASH_UNSUPPORTED', '不能删除规则；请显式替换为空');
+            content = null;
+            break;
+        }
+        if (content !== null && typeof content !== 'string')
+          throw new StashError('STASH_INVALID_DATA', '缺少内容');
+        if (content !== null && containsSecret(content))
+          throw new StashError('STASH_SECRET', '禁止保存凭据');
+        if (content === null) files.delete(path);
+        else files.set(path, content);
+        const state = composeResident(files, this.meter, this.config.indexBudgetTokens);
+        const used = this.meter.estimate(state.rules);
+        if (used > this.config.rulesBudgetTokens)
+          throw new StashError(
+            'STASH_BUDGET_EXCEEDED',
+            budgetDetail(used, this.config.rulesBudgetTokens),
+          );
+        const remaining = (content ?? '').split('\n');
+        const removed =
+          input.op === 'replace'
+            ? (before ?? '').split('\n').filter((line) => {
+                const i = remaining.indexOf(line);
+                if (i < 0) return true;
+                remaining.splice(i, 1);
+                return false;
+              })
+            : [];
+        return {
+          content,
+          value: {
+            text:
+              writeResult(path, used, this.config.rulesBudgetTokens, removed) +
+              '\n' +
+              rulesUpdate(state.rules),
+            state,
+          },
+        };
+      },
+    );
+  }
+}

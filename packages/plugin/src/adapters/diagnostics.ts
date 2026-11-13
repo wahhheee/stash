@@ -17,6 +17,8 @@ import { satisfies } from 'semver';
 import { z } from 'zod';
 import { redact } from './redaction.ts';
 import type { ResolvedConfig } from './config.ts';
+import { FileMemoryStore, digest } from './memory-store.ts';
+import { composeResident } from '@wahhheee/stash-core';
 
 export const SUPPORTED_DSH = '>=0.2.2-rc.1 <0.3.0-0';
 
@@ -59,12 +61,16 @@ export const ReportSchema = z
     createdAt: z.iso.datetime(),
     version: z.string(),
     hostVersion: z.string(),
-    phase: z.literal(1),
+    phase: z.union([z.literal(1), z.literal(2)]),
     config: z
       .object({
         trace: z.enum(['off', 'metadata', 'content']),
         traceRetentionDays: z.number().int().min(1).max(365),
         memoryRoot: z.string(),
+        rulesBudgetTokens: z.number().optional(),
+        indexBudgetTokens: z.number().optional(),
+        viewBudgetTokens: z.number().optional(),
+        externalRuleUpdates: z.enum(['next-request', 'next-compaction']).optional(),
       })
       .strict(),
     checks: z.array(CheckSchema),
@@ -120,6 +126,40 @@ export async function inspectRoot(root: string): Promise<Check[]> {
           (error as NodeJS.ErrnoException).code === 'ENOENT' ? '目录尚未初始化' : '目录不可读',
       },
     ];
+  }
+  const store = new FileMemoryStore(root);
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    try {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('工作区必须为普通目录');
+      await store.validateWorkspace(entry.name);
+      const journal = await store.journal(entry.name);
+      const files = await store.snapshot(entry.name, true);
+      composeResident(files, { estimate: (text) => Math.ceil(text.length / 4) }, 1600);
+      const latest = new Map(journal.map((change) => [change.path, change.after]));
+      for (const path of new Set([...latest.keys(), ...files.keys()])) {
+        if (
+          (latest.get(path)?.revision ?? null) !==
+          (files.has(path) ? digest(files.get(path)!) : null)
+        )
+          throw new Error('文件与修改日志不一致；外部编辑将在下次请求记录');
+      }
+      const names = await readdir(store.directory(entry.name));
+      if (names.includes('.lock'))
+        throw new Error('存在工作区锁；可能正在写入，请重试；确认进程停止后才能人工清理');
+      if (names.includes('.pending.json')) throw new Error('存在待提交记录；下次请求恢复');
+      checks.push({
+        name: entry.name,
+        ok: true,
+        detail: files.size + ' 个记忆文件，' + journal.length + ' 条修改记录',
+      });
+    } catch {
+      checks.push({
+        name: entry.name,
+        ok: false,
+        detail: '工作区格式、锁、待提交记录或日志一致性检查失败',
+      });
+    }
   }
   const trace = join(root, '.trace');
   try {
@@ -209,7 +249,7 @@ export async function writeReport(
     createdAt: new Date().toISOString(),
     version,
     hostVersion,
-    phase: 1,
+    phase: 2,
     config,
     checks,
     trace: trace.slice(-200),

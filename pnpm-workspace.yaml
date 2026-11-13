@@ -10,3 +10,4 @@ allowBuilds:
   node-addon-require-builtin: false
 overrides:
   '@opentelemetry/api': 1.9.0
+  zod: 4.4.3

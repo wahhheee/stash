@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  MemoryFiles,
-  MemorySessionLog,
-  MemorySearch,
-  CharacterEstimator,
-} from '../src/testing/memory.ts';
+import { MemoryFiles, MemorySessionLog, MemorySearch } from '../src/testing/memory.ts';
 import { MODEL_SURFACE } from '../src/index.ts';
 
 describe('领域测试端口', () => {
@@ -63,18 +58,10 @@ describe('领域测试端口', () => {
       search.search({ sessionIds: ['s'], query: 'match', since: 'bad', limit: 1 }),
     ).rejects.toMatchObject({ code: 'STASH_INVALID_DATA' });
   });
-  it('阶段一的模型表面为空，模板快照附估算量', () => {
+  it('工作区模型表面快照附估算量', () => {
     expect({
       ...MODEL_SURFACE,
-      tokens: new CharacterEstimator().estimate(MODEL_SURFACE.instructions),
-    }).toMatchInlineSnapshot(
-      `
-      {
-        "instructions": "",
-        "tokens": 0,
-        "tools": [],
-      }
-      `,
-    );
+      tokens: Math.ceil(MODEL_SURFACE.instructions.length / 4),
+    }).toMatchSnapshot();
   });
 });

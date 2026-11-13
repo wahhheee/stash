@@ -56,7 +56,15 @@ describe('诊断基础设施', () => {
   });
   it('报告剥离正文，脱敏凭据，拒绝未来版本与损坏文件', async () => {
     const root = await temporary();
-    const config = { memoryRoot: root, trace: 'content' as const, traceRetentionDays: 7 };
+    const config = {
+      rulesBudgetTokens: 1600,
+      indexBudgetTokens: 1600,
+      viewBudgetTokens: 4000,
+      externalRuleUpdates: 'next-request' as const,
+      memoryRoot: root,
+      trace: 'content' as const,
+      traceRetentionDays: 7,
+    };
     const sink = new FileTraceSink(root, 'content', 7);
     await sink.emit({
       v: 1,
@@ -93,7 +101,15 @@ describe('诊断基础设施', () => {
   });
   it('命令严格解析，trace 切换仅影响本实例', async () => {
     const root = await temporary();
-    const config = { memoryRoot: root, trace: 'off' as const, traceRetentionDays: 7 };
+    const config = {
+      rulesBudgetTokens: 1600,
+      indexBudgetTokens: 1600,
+      viewBudgetTokens: 4000,
+      externalRuleUpdates: 'next-request' as const,
+      memoryRoot: root,
+      trace: 'off' as const,
+      traceRetentionDays: 7,
+    };
     const runtime = new StashRuntime(config, '0.1.0', '0.2.2-rc.1');
     expect((await runtime.command('status extra')).kind).toBe('error');
     expect((await runtime.command('trace metadata')).kind).toBe('success');

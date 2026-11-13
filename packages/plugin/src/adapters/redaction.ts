@@ -4,3 +4,10 @@ export function redact(text: string): string {
     .replace(/\bsk-[a-zA-Z0-9_-]{12,}\b/gu, '[REDACTED]')
     .replace(/(Bearer\s+)[^\s"']+/giu, '$1[REDACTED]');
 }
+
+/** 常见凭据格式只作拒绝判定，不回传匹配内容。 */
+export function containsSecret(text: string): boolean {
+  return /\bsk-[a-zA-Z0-9_-]{12,}\b|Bearer\s+[^\s"']+|\bgh[pousr]_[a-zA-Z0-9]{20,}\b|\bAKIA[A-Z0-9]{16}\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/iu.test(
+    text,
+  );
+}

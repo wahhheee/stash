@@ -8,6 +8,7 @@ import type { Config } from './config.ts';
 import type { StashStatus } from '../types.ts';
 import { StashError } from '@wahhheee/stash-core';
 import manifest from '../../package.json' with { type: 'json' };
+import { MemoryAdapter } from './memory-dsh.ts';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -17,7 +18,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** DSH 服务边界负责注册、生命周期和宿主版本解析。 */
 export class StashService extends TypertRemoteService {
-  static inject = ['commands'];
+  static inject = ['commands', 'agents', 'tools', 'systemPrompt', 'tokenMeter'];
   private readonly runtime: StashRuntime;
 
   constructor(ctx: Context, config: Config = {}) {
@@ -25,17 +26,28 @@ export class StashService extends TypertRemoteService {
     const require = createRequire(import.meta.url);
     const host = require('@deepseek-ai/dsh-commands/package.json') as { version: string };
     this.runtime = new StashRuntime(resolveConfig(config), manifest.version, host.version);
+    const memory = new MemoryAdapter(ctx, this.runtime.config, this.runtime.trace);
     const logger = ctx.logger('stash');
     ctx.effect(
       () =>
         ctx.commands.register({
           name: 'stash',
           description: 'stash 状态与诊断',
-          input: { hint: 'status | doctor [--bundle] | trace off|metadata|content' },
+          input: {
+            hint: 'status | context | render | explain [n] | doctor [--bundle] | trace off|metadata|content',
+          },
           recordInput: false,
           handler: async (invocation) => {
             try {
-              return await this.runtime.command(invocation.rawInput, invocation.commandId);
+              const result = await memory.command(invocation.agent, invocation.rawInput);
+              if (result && invocation.rawInput.trim() === 'status')
+                return {
+                  ...result,
+                  text: (await this.runtime.command('status')).text + '\n' + result.text,
+                };
+              return (
+                result ?? (await this.runtime.command(invocation.rawInput, invocation.commandId))
+              );
             } catch (error) {
               const code = error instanceof StashError ? error.code : 'STASH_IO_ERROR';
               logger.error(

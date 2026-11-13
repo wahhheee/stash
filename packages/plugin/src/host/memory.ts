@@ -8,7 +8,8 @@ import {
   viewResult,
   writeResult,
   budgetDetail,
-  rulesUpdate,
+  expandRules,
+  frontmatter,
 } from '@wahhheee/stash-core';
 import type { TokenEstimator, MemoryBudgets, ResidentState } from '@wahhheee/stash-core';
 import type { FileMemoryStore } from '../adapters/memory-store.ts';
@@ -106,7 +107,11 @@ export class WorkspaceMemory {
     return viewResult(path, text.slice(offset));
   }
 
-  async write(input: WriteInput, callId: string): Promise<{ text: string; state: ResidentState }> {
+  async write(
+    input: WriteInput,
+    callId: string,
+    knownRules: string | null = null,
+  ): Promise<{ text: string; state: ResidentState; trusted: boolean }> {
     const path = memoryPath(input.path, true);
     const destructive = ['edit', 'replace', 'archive', 'delete'].includes(input.op);
     const expected = input.op === 'create' ? null : destructive ? this.reads.get(path) : undefined;
@@ -121,6 +126,8 @@ export class WorkspaceMemory {
       input.op,
       (files) => {
         const before = files.get(path);
+        // 与会话可见版本比较，其他会话已记录的修改同样不能被顺带确认。
+        let trusted = knownRules !== null && expandRules(files) === knownRules;
         let content: string | null;
         if (input.op !== 'create' && before === undefined)
           throw new StashError('STASH_NOT_FOUND', '文件不存在');
@@ -152,6 +159,16 @@ export class WorkspaceMemory {
           throw new StashError('STASH_INVALID_DATA', '缺少内容');
         if (content !== null && containsSecret(content))
           throw new StashError('STASH_SECRET', '禁止保存凭据');
+        if (path === '/RULES.md') {
+          const previous = new Set(frontmatter(before ?? '').body.split(/\r?\n/u));
+          // 新引用的正文不在工具参数中，留给下一请求显式呈现。
+          if (
+            frontmatter(content ?? '')
+              .body.split(/\r?\n/u)
+              .some((line) => line.startsWith('@') && !previous.has(line))
+          )
+            trusted = false;
+        }
         if (content === null) files.delete(path);
         else files.set(path, content);
         const state = composeResident(files, this.meter, this.config.indexBudgetTokens);
@@ -174,11 +191,9 @@ export class WorkspaceMemory {
         return {
           content,
           value: {
-            text:
-              writeResult(path, used, this.config.rulesBudgetTokens, removed) +
-              '\n' +
-              rulesUpdate(state.rules),
+            text: writeResult(path, used, this.config.rulesBudgetTokens, removed),
             state,
+            trusted,
           },
         };
       },

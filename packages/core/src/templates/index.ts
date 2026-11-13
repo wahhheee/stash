@@ -82,14 +82,6 @@ export function fullContext(
   );
 }
 
-export function rulesUpdate(after: string): string {
-  return (
-    '<memory-context-update>\nWorkspace rules changed. Replace the previous workspace rules with:\n' +
-    (escapeMemory(after) || '(none)') +
-    '\nThe note index is unchanged.\n</memory-context-update>'
-  );
-}
-
 export function rulesDelta(before: string, after: string): string {
   const oldLines = before ? before.split('\n') : [];
   const newLines = after ? after.split('\n') : [];

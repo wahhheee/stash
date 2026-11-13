@@ -239,12 +239,15 @@ export class MemoryAdapter {
                 throw new StashError('STASH_UNSUPPORTED', '子代理只读');
               const input = writeSchema.parse(args);
               const memory = await this.memory(agent);
-              const result = await memory.write(input, exec.rootCallId);
+              const believed = foldResident(visibleRecords(agent), memory.workspaceId);
+              const result = await memory.write(input, exec.rootCallId, believed?.rules ?? null);
               const stash: ResidentRecord = {
                 v: 1,
                 workspaceId: memory.workspaceId,
                 kind: 'write',
                 state: result.state,
+                // 嵌套调用的参数未必进入模型可见结果，按保守补发处理。
+                trusted: result.trusted && !exec.parent,
               };
               if (exec.parent)
                 exec.deferContext(

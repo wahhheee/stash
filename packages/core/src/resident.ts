@@ -21,6 +21,8 @@ export interface ResidentRecord {
   workspaceId: string;
   kind: 'full' | 'rules' | 'write';
   state: ResidentState;
+  /** 仅写入记录使用；旧记录未提供时沿用原有确认语义。 */
+  trusted?: boolean | undefined;
 }
 
 export interface MemoryBudgets {
@@ -102,6 +104,7 @@ export function foldResident(
   let state: ResidentState | null = null;
   for (const record of records) {
     if (record.v !== 1 || record.workspaceId !== workspaceId) continue;
+    if (record.kind === 'write' && record.trusted === false) continue;
     if (record.kind === 'full') state = record.state;
     else if (state) state = { rules: record.state.rules, index: state.index, folded: state.folded };
   }

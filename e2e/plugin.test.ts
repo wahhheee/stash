@@ -1,4 +1,5 @@
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
+import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
@@ -37,6 +38,8 @@ it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async ()
       const second = JSON.stringify(mock.requests[1]!.body);
       expect(second).toContain('Wrote /RULES.md');
       expect(second.match(/<memory-context>/gu)).toHaveLength(1);
+      expect(second).not.toContain('<memory-context-update>');
+      expect(second).not.toContain('Replace the previous workspace rules');
       const dirs = await readdir(join(fixture.home, 'memory'), { withFileTypes: true });
       const workspace = dirs.find((d) => d.isDirectory() && !d.name.startsWith('.'))!.name;
       workspaceId = workspace;
@@ -111,6 +114,70 @@ it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async ()
         sessionIds[0]!,
       ),
     ).rejects.toThrow('决策重放不一致');
+  } finally {
+    await mock.close();
+    await fixture.close();
+  }
+});
+
+it('模型请求期间的外部编辑在自身写入后补发，重启重放保持一致', async () => {
+  const fixture = await createHarnessFixture();
+  let rulePath = '';
+  let edited = false;
+  const mock = await startMockLlmServer({
+    sequence: ['success', 'tool_call_success', 'success'],
+    repeatLast: true,
+    successText: 'interleaved ok',
+    toolName: 'memory_write',
+    toolArguments: JSON.stringify({ path: '/RULES.md', op: 'append', content: '\n- 本次模型规则' }),
+    onEvent(event) {
+      if (event.type === 'request' && event.attempt === 2) {
+        writeFileSync(rulePath, '- 已知规则\n- 编辑器新规则');
+        edited = true;
+      }
+    },
+  });
+  try {
+    await fixture.cli('--profile', 'test', '--from-default-profile', 'sdk', '--dump-config');
+    await fixture.cli('plugin', '--profile', 'test', 'add', resolve('packages/plugin'));
+    const harness = fixture.sdk(mock.baseURL);
+    let sessionId = '';
+    let workspaceId = '';
+    try {
+      const session = harness.session();
+      sessionId = session.id;
+      await session.run('建立会话');
+      const dirs = await readdir(join(fixture.home, 'memory'), { withFileTypes: true });
+      workspaceId = dirs.find((d) => d.isDirectory() && !d.name.startsWith('.'))!.name;
+      rulePath = join(fixture.home, 'memory', workspaceId, 'RULES.md');
+      await writeFile(rulePath, '- 已知规则');
+      await session.run('追加本次模型规则');
+      expect(edited).toBe(true);
+      const request = JSON.stringify(mock.requests.at(-1)!.body);
+      expect(request).toContain('Wrote /RULES.md');
+      expect(request).toContain('+ - 编辑器新规则');
+      expect(request).toContain('+ - 本次模型规则');
+      expect(request).not.toContain('Replace the previous workspace rules');
+    } finally {
+      await harness.close();
+    }
+    const resumed = fixture.sdk(mock.baseURL);
+    try {
+      await (await resumed.resumeSession(sessionId)).run('重启继续');
+      expect(
+        JSON.stringify(mock.requests.at(-1)!.body).match(/<memory-context-update>/gu),
+      ).toHaveLength(2);
+    } finally {
+      await resumed.close();
+    }
+    expect(
+      await reconcile(
+        join(fixture.home, 'memory'),
+        workspaceId,
+        join(fixture.home, 'sessions'),
+        sessionId,
+      ),
+    ).toEqual(expect.arrayContaining([expect.stringContaining('OK ')]));
   } finally {
     await mock.close();
     await fixture.close();

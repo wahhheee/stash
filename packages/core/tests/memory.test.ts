@@ -83,6 +83,14 @@ it('可见状态从完整快照起步，自己写入免重发，索引延后，�
     { v: 1 as const, workspaceId: 'w', kind: 'write' as const, state: after },
   ];
   expect(decideResident(foldResident(records, 'w'), after, 'w', meter, config).kind).toBe('none');
+  const untrusted = records.map((r) => (r.kind === 'write' ? { ...r, trusted: false } : r));
+  expect(foldResident(untrusted, 'w')).toEqual(before);
+  expect(decideResident(foldResident(untrusted, 'w'), after, 'w', meter, config).kind).toBe(
+    'rules',
+  );
+  expect(
+    foldResident([...untrusted, { v: 1, workspaceId: 'w', kind: 'rules', state: after }], 'w'),
+  ).toEqual(after);
   expect(decideResident(before, after, 'w', meter, config).kind).toBe('rules');
   expect(
     decideResident(before, { ...after, rules: '长'.repeat(4000) }, 'w', meter, config).kind,

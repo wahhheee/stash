@@ -14,6 +14,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { FileMemoryStore, memoryFile } from '../src/adapters/memory-store.ts';
 import { WorkspaceMemory } from '../src/host/memory.ts';
 import type * as Fs from 'node:fs/promises';
+import { residentSchema } from '../src/adapters/memory-records.ts';
 
 const roots: string[] = [];
 
@@ -272,4 +273,51 @@ it('恢复拒绝无关尾部、日志链损坏和外部覆盖，不截断已有�
   await writeFile(join(root, 'w', 'RULES.md'), '- 用户改写');
   await expect(store.observe('w')).rejects.toMatchObject({ code: 'STASH_STALE_READ' });
   expect(await readFile(journalPath, 'utf8')).toBe(original);
+});
+
+it('写入只返回简短结果，外部交错和新并入正文不被顺带确认', async () => {
+  const { root, a, b } = await fixture();
+  const original = '- 已知规则';
+  const first = await a.write({ path: '/RULES.md', op: 'create', content: original }, '1', '');
+  expect(first.trusted).toBe(true);
+  expect(first.text).not.toContain(original);
+  expect(first.text).not.toContain('<memory-context-update>');
+  const note = '---\ntype: lesson\ndescription: 结论\n---\n规则引用正文';
+  const ordinary = await a.write(
+    { path: '/notes/a.md', op: 'create', content: note },
+    '2',
+    original,
+  );
+  expect(ordinary.trusted).toBe(true);
+  expect(ordinary.text).not.toContain(original);
+  await writeFile(join(root, 'w', 'RULES.md'), original + '\n- 用户手改');
+  // 其他读操作已经记录了外部编辑，写入仍须依据会话的可见版本判定。
+  await b.observe();
+  const interleaved = await a.write(
+    { path: '/RULES.md', op: 'append', content: '\n- 本次新增' },
+    '3',
+    original,
+  );
+  expect(interleaved.trusted).toBe(false);
+  const repeated = await a.write(
+    { path: '/RULES.md', op: 'append', content: '\n- 再次新增' },
+    '4',
+    original,
+  );
+  expect(repeated.trusted).toBe(false);
+  const latest = (await a.observe()).state.rules;
+  await b.write({ path: '/RULES.md', op: 'append', content: '\n- 其他会话' }, '5', latest);
+  expect(
+    (await a.write({ path: '/RULES.md', op: 'append', content: '\n- 继续' }, '6', latest)).trusted,
+  ).toBe(false);
+  const imported = await a.write(
+    { path: '/RULES.md', op: 'append', content: '\n@notes/a.md' },
+    '7',
+    (await a.observe()).state.rules,
+  );
+  expect(imported.trusted).toBe(false);
+  expect(imported.text).not.toContain('规则引用正文');
+  const legacy = { v: 1, workspaceId: 'w', kind: 'write', state: first.state };
+  expect(residentSchema.parse(legacy)).toEqual(legacy);
+  expect(residentSchema.parse({ ...legacy, trusted: false }).trusted).toBe(false);
 });

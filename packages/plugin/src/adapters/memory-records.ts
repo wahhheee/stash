@@ -6,6 +6,7 @@ export const residentSchema = z
     workspaceId: z.string(),
     kind: z.enum(['full', 'rules', 'write']),
     state: z.object({ rules: z.string(), index: z.string(), folded: z.boolean() }).strict(),
+    trusted: z.boolean().optional(),
   })
   .strict();
 

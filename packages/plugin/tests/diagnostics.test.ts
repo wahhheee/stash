@@ -73,9 +73,9 @@ describe('诊断基础设施', () => {
       code: 'sk-' + 'a'.repeat(30),
       content: 'private text',
     });
-    const checks = await doctor(config, '0.2.2-rc.1');
+    const checks = await doctor(config, '0.2.2-rc.3');
     expect(checks.every((c) => c.ok)).toBe(true);
-    const report = await readReport(await writeReport(config, '0.1.0', '0.2.2-rc.1', checks));
+    const report = await readReport(await writeReport(config, '0.1.0', '0.2.2-rc.3', checks));
     expect(report.trace).toHaveLength(1);
     expect(report.trace[0]).not.toHaveProperty('content');
     expect(JSON.stringify(report)).not.toContain('a'.repeat(30));
@@ -88,6 +88,8 @@ describe('诊断基础设施', () => {
     await expect(readReport(bad)).rejects.toThrow('8 MiB');
     await writeFile(join(root, '.trace', 'broken.jsonl'), '{');
     expect((await inspectRoot(root)).some((c) => !c.ok)).toBe(true);
+    expect((await doctor(config, '0.2.2-rc.1'))[0]!.ok).toBe(false);
+    expect((await doctor(config, '0.2.2-rc.2'))[0]!.ok).toBe(false);
     expect((await doctor(config, '0.3.0-rc.1'))[0]!.ok).toBe(false);
   });
   it('trace 的磁盘故障不会伪装成功', async () => {
@@ -110,7 +112,7 @@ describe('诊断基础设施', () => {
       trace: 'off' as const,
       traceRetentionDays: 7,
     };
-    const runtime = new StashRuntime(config, '0.1.0', '0.2.2-rc.1');
+    const runtime = new StashRuntime(config, '0.1.0', '0.2.2-rc.3');
     expect((await runtime.command('status extra')).kind).toBe('error');
     expect((await runtime.command('trace metadata')).kind).toBe('success');
     expect(runtime.status().trace).toBe('metadata');

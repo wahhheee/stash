@@ -66,4 +66,4 @@ memory_write 支持 create、append、edit、replace、archive、delete。create
 
 每个工作区保存 .decisions-<SessionId>.jsonl，每行 v: 1，仅包含请求前日志位置、修改日志版本 ID、配置、决策、正文哈希和压缩范围，没有正文。它独立于可关闭的 trace，用于精确离线重放；当前不自动清理。决策文件继续采用整体原子替换，每次写入校验已有记录；当前没有为它提供残缺尾部恢复。reconcile 用 DSH persistence 的 read 句柄读取日志，以 Session 重建各请求前的 surface，并从修改日志版本重建实际记忆，比较决策和实际注入文本。未发出模型请求的尝试单独标注。重放需要完整会话日志、工作区修改日志与决策记录。
 
-trace 按 UTC 日轮转；报告为 format: 1 gzip JSON，兼容阶段一报告，只包含检查结果、生效配置和 trace 元数据，不附记忆或会话正文。宿主版本保持 0.2.2-rc.1，范围 >=0.2.2-rc.1 <0.3.0-0。
+trace 按 UTC 日轮转；报告为 format: 1 gzip JSON，兼容阶段一报告，只包含检查结果、生效配置和 trace 元数据，不附记忆或会话正文。宿主验证基线为 0.2.2-rc.3，范围 >=0.2.2-rc.3 <0.3.0-0。升级依据见 [宿主升级决策](decisions/0003-dsh-rc3.md)。

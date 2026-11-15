@@ -20,7 +20,7 @@ import type { ResolvedConfig } from './config.ts';
 import { FileMemoryStore, digest } from './memory-store.ts';
 import { composeResident } from '@wahhheee/stash-core';
 
-export const SUPPORTED_DSH = '>=0.2.2-rc.1 <0.3.0-0';
+export const SUPPORTED_DSH = '>=0.2.2-rc.3 <0.3.0-0';
 
 export const TraceSchema = z
   .object({

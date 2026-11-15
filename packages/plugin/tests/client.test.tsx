@@ -9,7 +9,7 @@ afterEach(cleanup);
 it('展示连接、版本、失败与重连，卸载时释放订阅', async () => {
   const status = {
     version: '0.2.1',
-    hostVersion: '0.2.2-rc.1',
+    hostVersion: '0.2.2-rc.3',
     phase: 2 as const,
     memoryEnabled: true as const,
     trace: 'off' as const,

@@ -4,7 +4,7 @@ DSH 工作区记忆插件。当前版本 0.2.1 提供工作区规则与笔记读
 
 ## 开发
 
-需要 Node.js 22.18+、pnpm 12.18.0，宿主锁定为 DeepSeek Harness 0.2.2-rc.1。
+需要 Node.js 22.18+、pnpm 12.18.0，宿主锁定为 DeepSeek Harness 0.2.2-rc.3。
 
 ```sh
 pnpm install --frozen-lockfile

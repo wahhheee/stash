@@ -19,11 +19,11 @@
     "devtools": "tsx packages/devtools/src/cli.ts"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-agent-loop-testkit": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-llm-mock-server": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-typert-generator": "0.2.2-rc.1",
+    "@deepseek-ai/dsh": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-agent-loop-testkit": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm-mock-server": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-typert-generator": "0.2.2-rc.3",
     "@eslint/js": "^9.39.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@testing-library/react": "^16.3.0",

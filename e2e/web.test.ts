@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
+import hostManifest from '@deepseek-ai/dsh/package.json' with { type: 'json' };
 import { createHarnessFixture } from '../packages/devtools/src/harness.ts';
 import { startWebHost } from '../packages/devtools/src/web-host.ts';
 import { runNode } from '../packages/devtools/src/harness.ts';
@@ -44,6 +45,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
       };
       expect(await invoke('stash/getStatus', {})).toMatchObject({
         version: '0.2.1',
+        hostVersion: hostManifest.version,
         memoryEnabled: true,
       });
       const { sessionId } = await invoke<{ sessionId: string }>('session/create', {

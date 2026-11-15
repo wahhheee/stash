@@ -19,6 +19,7 @@
 
 ## 未发布
 
+- 将 DSH、SDK 与测试工具基线从 0.2.2-rc.1 升级至 0.2.2-rc.3，宿主兼容范围调整为 >=0.2.2-rc.3 <0.3.0-0；stash 版本仍为 0.2.1。
 - 统一函数、类型、类方法与大块定义之间的空行，加入 ESLint 自动修复和间距检查。
 - 将 noEmit 写入共享 TypeScript 配置，修复编辑器对 allowImportingTsExtensions 的报错。
 

@@ -1,4 +1,6 @@
 import { HISTORY_GUIDE, HISTORY_INSTRUCTIONS } from './history.ts';
+import { WRITE_OPERATIONS } from '../write.ts';
+import { WRITE_OPERATION_GUIDE } from './validation.ts';
 
 /** 全部模型可见的固定文字与工具 schema。 */
 export const INSTRUCTIONS =
@@ -35,15 +37,34 @@ export const VIEW_TOOL = {
 export const WRITE_TOOL = {
   name: 'memory_write',
   description:
-    'Write workspace memory. Read before changing existing content. Rules have a token budget; credentials are rejected.',
+    'Manage workspace rules and notes. Read the complete current file before edit, replace, archive or delete. create fails if the file exists; replace rewrites it; delete removes a note. Use only the fields listed for the selected op. Rules have a token budget; credentials are rejected.',
   parameters: {
     type: 'object',
     properties: {
-      path: { type: 'string' },
-      op: { type: 'string', enum: ['create', 'append', 'edit', 'replace', 'archive', 'delete'] },
-      content: { type: 'string' },
-      old: { type: 'string' },
-      new: { type: 'string' },
+      path: {
+        type: 'string',
+        description: 'Workspace memory path: /RULES.md or /notes/<name>.md.',
+      },
+      op: {
+        type: 'string',
+        enum: Object.keys(WRITE_OPERATIONS),
+        description: WRITE_OPERATION_GUIDE,
+      },
+      content: {
+        type: 'string',
+        description:
+          'Required only for create, append and replace. Omit for edit, archive and delete. An empty string is content, not omission.',
+      },
+      old: {
+        type: 'string',
+        description:
+          'Required only for edit: non-empty literal text that appears exactly once. Omit for every other operation.',
+      },
+      new: {
+        type: 'string',
+        description:
+          'Required only for edit: replacement text; an empty string deletes the matched text. Omit for every other operation.',
+      },
     },
     required: ['path', 'op'],
     additionalProperties: false,
@@ -166,12 +187,13 @@ export function toolError(code: string, detail?: string): string {
     STASH_SEARCH_FAILED:
       'Search could not read the whole scope. Retry or narrow the scope; this is not a no-match result.',
     STASH_INVALID_DATA:
-      'Check the path, operation fields and YAML frontmatter. Edit requires exactly one matching old text.',
+      'Invalid input or memory data. Check the supplied arguments and memory format.',
     STASH_NOT_FOUND: 'The requested file or imported note does not exist.',
     STASH_BUDGET_EXCEEDED: 'Shorten the rules or move non-instruction content into notes.',
     STASH_SECRET: 'Remove credentials before storing memory.',
     STASH_LOCKED: 'Workspace memory is busy or has an abandoned lock. Retry or run /stash doctor.',
     STASH_IO_ERROR: 'Memory storage is unavailable. Run /stash doctor.',
   };
+  if (code === 'STASH_INVALID_DATA' && detail) return code + ': ' + detail;
   return code + ': ' + (reasons[code] ?? reasons.STASH_IO_ERROR) + (detail ? ' ' + detail : '');
 }

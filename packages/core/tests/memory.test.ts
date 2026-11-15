@@ -11,6 +11,8 @@ import {
   fullContext,
   GUIDE,
   toolError,
+  StashError,
+  validationDetail,
 } from '../src/index.ts';
 
 const meter = { estimate: (text: string) => Math.ceil(text.length / 4) };
@@ -57,6 +59,34 @@ it('保留未知 frontmatter，归档退出索引，一层并入及路径作用�
     expect.objectContaining({ code: 'STASH_UNSUPPORTED' }),
   );
   expect(() => parseNote('---\ntype: x\n---\nbody')).toThrow();
+});
+
+it('笔记格式诊断区分 YAML 和字段错误，不回显解析器输入', () => {
+  const cases = [
+    ['---\ntype: lesson', 'closing ---'],
+    ['---\ntype: [不应回显\n---\n正文', 'Invalid YAML'],
+    ['---\ntype: lesson\ntype: other\n---\n正文', 'unique keys'],
+    ['---\ntype: &kind lesson\ndescription: *kind\n---\n正文', 'no aliases'],
+    ['---\n- lesson\n---\n正文', 'must be a mapping'],
+    ['没有元数据的笔记', '"type"'],
+    ['---\ntype: lesson\n---\n正文', '"description"'],
+    ['---\ntype: lesson\ndescription: 结论\nindex: yes\n---\n正文', '"index" must be a boolean'],
+    ['---\ntype: lesson\ndescription: 结论\nstatus: false\n---\n正文', '"status" must be a string'],
+  ] as const;
+  for (const [text, expected] of cases) {
+    try {
+      parseNote(text);
+      throw new Error('预期笔记格式校验失败');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StashError);
+      const typed = error as StashError;
+      expect(typed.code).toBe('STASH_INVALID_DATA');
+      const message = toolError(typed.code, validationDetail(typed.detail!));
+      expect(message).toContain(expected);
+      expect(message).not.toContain('不应回显');
+      expect(message).not.toContain('Edit requires');
+    }
+  }
 });
 
 it('索引依次折叠目录、根文件类型和剩余目录，保持预算和展开提示', () => {

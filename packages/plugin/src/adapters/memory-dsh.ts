@@ -14,6 +14,7 @@ import {
   WRITE_TOOL,
   StashError,
   toolError,
+  validationDetail,
   foldResident,
   decideResident,
   fullContext,
@@ -29,6 +30,7 @@ import { DshHistory, historyProjection } from './history-dsh.ts';
 import { historyTarget } from '@wahhheee/stash-core';
 
 import { residentSchema } from './memory-records.ts';
+import { parseWriteInput } from './write-input.ts';
 
 const viewSchema = z
   .object({
@@ -41,23 +43,6 @@ const viewSchema = z
     all: z.boolean().optional(),
   })
   .strict();
-
-const writeSchema = z
-  .object({
-    path: z.string(),
-    op: z.enum(['create', 'append', 'edit', 'replace', 'archive', 'delete']),
-    content: z.string().optional(),
-    old: z.string().optional(),
-    new: z.string().optional(),
-  })
-  .strict()
-  .refine((x) =>
-    ['create', 'append', 'replace'].includes(x.op)
-      ? x.content !== undefined && x.old === undefined && x.new === undefined
-      : x.op === 'edit'
-        ? x.old !== undefined && x.new !== undefined && x.content === undefined
-        : x.content === undefined && x.old === undefined && x.new === undefined,
-  );
 
 export interface MemorySource {
   kind: 'stash-memory';
@@ -283,7 +268,7 @@ export class MemoryAdapter {
               exec.signal.throwIfAborted();
               if (!memoryPolicy.writable(agent.session.header.origin === 'subagent'))
                 throw new StashError('STASH_UNSUPPORTED', '子代理只读');
-              const input = writeSchema.parse(args);
+              const input = parseWriteInput(args);
               const memory = await this.memory(agent);
               const believed = foldResident(visibleRecords(agent), memory.workspaceId);
               const result = await memory.write(input, exec.rootCallId, believed?.rules ?? null);
@@ -324,9 +309,12 @@ export class MemoryAdapter {
       throw new HarnessError(
         toolError(
           code,
-          error instanceof StashError &&
-            ['STASH_BUDGET_EXCEEDED', 'STASH_AMBIGUOUS_REF'].includes(error.code)
-            ? error.message
+          error instanceof StashError
+            ? error.detail
+              ? validationDetail(error.detail)
+              : ['STASH_BUDGET_EXCEEDED', 'STASH_AMBIGUOUS_REF'].includes(error.code)
+                ? error.message
+                : undefined
             : undefined,
         ),
         code,

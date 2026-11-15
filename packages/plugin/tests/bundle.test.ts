@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { Script } from 'node:vm';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 it('客户端产物遵守宿主 classic script 工厂契约，外部依赖仅 React', async () => {
   const require = createRequire(import.meta.url);
@@ -10,6 +10,7 @@ it('客户端产物遵守宿主 classic script 工厂契约，外部依赖仅 Re
   let loaded = false;
   new Script(source).runInNewContext({
     window: {
+      addEventListener: vi.fn(),
       __ModuleLoader__: {
         load(definition: {
           id: string;
@@ -17,7 +18,7 @@ it('客户端产物遵守宿主 classic script 工厂契约，外部依赖仅 Re
         }) {
           expect(definition.id).toBe('@wahhheee/dsh-stash');
           const plugin = definition.factory((name) => {
-            if (name !== 'react' && name !== 'react/jsx-runtime')
+            if (!['react', 'react/jsx-runtime', 'react-dom'].includes(name))
               throw new Error('意外的浏览器外部依赖：' + name);
             dependencies.push(name);
             return require(name) as unknown;

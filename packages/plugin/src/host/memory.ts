@@ -11,18 +11,15 @@ import {
   expandRules,
   frontmatter,
 } from '@wahhheee/stash-core';
-import type { TokenEstimator, MemoryBudgets, ResidentState } from '@wahhheee/stash-core';
+import type {
+  TokenEstimator,
+  MemoryBudgets,
+  ResidentState,
+  WriteInput,
+} from '@wahhheee/stash-core';
 import type { FileMemoryStore } from '../adapters/memory-store.ts';
 import { digest } from '../adapters/memory-store.ts';
 import { containsSecret } from '../adapters/redaction.ts';
-
-export interface WriteInput {
-  path: string;
-  op: 'create' | 'append' | 'edit' | 'replace' | 'archive' | 'delete';
-  content?: string | undefined;
-  old?: string | undefined;
-  new?: string | undefined;
-}
 
 /** 读取凭据只存在于当前 agent；完整连续读完才允许覆盖。 */
 export class WorkspaceMemory {
@@ -134,15 +131,24 @@ export class WorkspaceMemory {
         switch (input.op) {
           case 'create':
           case 'replace':
-            content = input.content!;
+            content = input.content;
             break;
           case 'append':
-            content = before! + input.content!;
+            content = before! + input.content;
             break;
           case 'edit': {
-            if (!input.old || before!.split(input.old).length !== 2)
-              throw new StashError('STASH_INVALID_DATA', '旧文本必须唯一');
-            content = before!.replace(input.old, () => input.new!);
+            if (!input.old)
+              throw new StashError('STASH_INVALID_DATA', '旧文本不能为空', {
+                kind: 'write-empty',
+                field: 'old',
+              });
+            const count = before!.split(input.old).length - 1;
+            if (count !== 1)
+              throw new StashError('STASH_INVALID_DATA', '旧文本必须唯一', {
+                kind: 'edit-match',
+                count,
+              });
+            content = before!.replace(input.old, () => input.new);
             break;
           }
           case 'archive':

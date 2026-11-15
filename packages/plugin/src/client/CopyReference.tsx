@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ReferenceIconRegular } from '@deepseek-ai/dsh-client-ui-primitives/src/ReferenceIcon.tsx';
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives/src/Tooltip.tsx';
+import {
+  IconCheckOutlineRegular,
+  IconCloseOutlineRegular,
+} from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
 import { sessionRef } from '@wahhheee/stash-core/refs';
 import type { StashReference } from '../types.ts';
 import type { LocaleKey } from './locales.ts';
+import css from './CopyReference.module.css';
 
 export function referenceLink(
   id: string,
@@ -25,30 +32,82 @@ export interface CopyReferenceProps {
 
 export function CopyReference({ messageId, load, t }: CopyReferenceProps) {
   const [state, setState] = useState<'idle' | 'pending' | 'done' | 'failed'>('idle');
+  const busy = useRef(false);
+  const generation = useRef(0);
+  useEffect(() => {
+    setState('idle');
+    busy.current = false;
+    return () => {
+      generation.current++;
+    };
+  }, [messageId]);
+  useEffect(() => {
+    if (state !== 'done') return;
+    const timer = setTimeout(() => setState('idle'), 2000);
+    return () => clearTimeout(timer);
+  }, [state]);
+  const feedback =
+    state === 'done'
+      ? t('copied')
+      : state === 'failed'
+        ? t('copyFailed')
+        : state === 'pending'
+          ? t('copyPending')
+          : '';
   return (
-    <span>
-      <button
-        type="button"
-        disabled={state === 'pending'}
-        title={t('copyReference')}
-        onClick={() => {
-          setState('pending');
-          void load(messageId)
-            .then(async (r) => {
-              const label = t('referenceLabel')
-                .replace('{title}', () => r.title)
-                .replace('{turn}', String(r.turn))
-                .replace('{time}', r.end);
-              await navigator.clipboard.writeText(referenceLink(r.id, label, r));
-              setState('done');
-            })
-            .catch(() => setState('failed'));
-        }}
+    <>
+      <Tooltip
+        label={feedback || t('copyReference') + '\n' + t('copyReferenceHint')}
+        side="bottom"
+        portal
+        maxWidth={300}
       >
-        {t('copyReference')}
-      </button>
-      {state === 'done' && <span role="status">{t('copied')}</span>}
-      {state === 'failed' && <span role="alert">{t('copyFailed')}</span>}
-    </span>
+        <button
+          type="button"
+          className={css.action}
+          aria-label={t('copyReference')}
+          aria-disabled={state === 'pending'}
+          aria-busy={state === 'pending'}
+          onClick={() => {
+            if (busy.current) return;
+            busy.current = true;
+            const current = generation.current;
+            setState('pending');
+            void load(messageId)
+              .then(async (r) => {
+                if (current !== generation.current) return;
+                const label = t('referenceLabel')
+                  .replace('{title}', () => r.title)
+                  .replace('{turn}', String(r.turn))
+                  .replace('{time}', r.end);
+                await navigator.clipboard.writeText(referenceLink(r.id, label, r));
+                if (current === generation.current) setState('done');
+              })
+              .catch(() => {
+                if (current === generation.current) setState('failed');
+              })
+              .finally(() => {
+                if (current === generation.current) busy.current = false;
+              });
+          }}
+        >
+          {state === 'done' ? (
+            <IconCheckOutlineRegular />
+          ) : state === 'failed' ? (
+            <IconCloseOutlineRegular />
+          ) : (
+            <ReferenceIconRegular kind="session" />
+          )}
+        </button>
+      </Tooltip>
+      <span className={css.announcement} role="status">
+        {state === 'failed' ? '' : feedback}
+      </span>
+      {state === 'failed' && (
+        <span className={css.announcement} role="alert">
+          {feedback}
+        </span>
+      )}
+    </>
   );
 }

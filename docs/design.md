@@ -34,6 +34,8 @@ memory_view 支持 /、/RULES.md、/notes/ 及子目录、笔记文件、/.guide
 
 memory_write 支持 create、append、edit、replace、archive、delete。create 要求不存在；append 在锁内追加且要求文件存在；edit 要求旧文本唯一；replace 返回被删除的行。规则不可 archive/delete，清空须读取后 replace。子代理只读。常见 API key、Bearer、GitHub token、AWS access key 和私钥头拒绝存储；外部扫描在写入日志前检查，不把匹配正文放入错误。此检查不替代用户的隐私判断。
 
+六种操作共用 path 和 op；create、append、replace 必须提供字符串 content，edit 必须提供非空 old 和字符串 new，new 为空字符串表示删除匹配文本。archive、delete 只接受 path 和 op；其余正文参数必须省略，空字符串和 null 均不等于省略。操作字段表同时生成工具说明、输入类型和适配器校验规则。STASH_INVALID_DATA 按参数缺失、类型、多余字段、编辑零匹配或多匹配、笔记 frontmatter 格式给出具体修正提示，不回显输入正文和底层异常。
+
 ## 常驻上下文
 
 静态说明和两个工具按 agent 作用域注册，与具体工作区和会话无关。agent/pre-step 在宿主放行请求后读取当前记忆，按 session.surface 的可见顺序折叠完整快照、规则增量与仍可见的成功写入结果。来源类型 stash-memory，元数据 stash.v 为 1，存储所表达的结构化状态。
@@ -58,7 +60,7 @@ query 仅用于历史路径。匹配基于宿主 extractSessionEventText 生成�
 
 历史结果用 memory-history 包裹，尖括号转义并声明仅作参考。结果不进入常驻规则。长结果按 viewBudgetTokens 分页；每个 agent 最多保留八个续读快照，cursor 绑定完整参数和偏移。续读读取固定快照，当前会话新增工具结果不会使其失效；改变参数、重启或快照被淘汰时须重新读取。历史读取不授予记忆写入资格。
 
-客户端每轮助手回复提供“复制引用”，宿主 getReference 按消息 ID 定位已完成轮次，返回完整 ID、标题、轮次、范围和 UTC 时间。会话菜单 order: 460 提供“复制会话引用”。链接文字跟随界面语言，标题转义 Markdown，复制失败显示反馈。宿主接口只返回定位数据，复制动作不注入历史正文。
+客户端每轮助手回复提供“复制本轮引用”图标按钮，使用宿主会话引用图标、主题变量和 Tooltip，尺寸跟随内容字号。提示说明粘贴后可让模型定位并读取本轮原始记录；获取期间阻止重复操作，成功显示勾号两秒后恢复，失败显示重试提示。状态同时提供无障碍播报，反馈不改变操作栏布局。宿主 getReference 按消息 ID 定位已完成轮次，返回完整 ID、标题、轮次、范围和 UTC 时间。会话菜单 order: 460 提供“复制会话引用”。链接文字跟随界面语言，标题转义 Markdown。宿主接口只返回定位数据，复制动作不注入历史正文。客户端样式内联到 classic script，由插件作用域安装和释放。
 
 离线 view 可附 sessions 目录、当前会话 ID 和查询选项 JSON，使用宿主 read 句柄和同一模板完成分页。离线目录没有工作区注册表，清单按 workspace.json 中最后已知路径与日志 cwd 精确相等筛选，路径改名后的成员应通过完整引用读取。离线操作不写投影缓存。
 

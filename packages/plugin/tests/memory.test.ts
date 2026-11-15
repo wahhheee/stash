@@ -15,6 +15,7 @@ import { FileMemoryStore, memoryFile } from '../src/adapters/memory-store.ts';
 import { WorkspaceMemory } from '../src/host/memory.ts';
 import type * as Fs from 'node:fs/promises';
 import { residentSchema } from '../src/adapters/memory-records.ts';
+import { StashError, validationDetail } from '@wahhheee/stash-core';
 
 const roots: string[] = [];
 
@@ -47,6 +48,30 @@ async function fixture() {
 
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+});
+
+it('编辑无匹配、多处匹配和笔记格式错误分别说明原因且不修改文件', async () => {
+  const { a, store } = await fixture();
+  await a.write({ path: '/RULES.md', op: 'create', content: '- 重复\n- 重复' }, '1');
+  await a.view('/RULES.md');
+  for (const [old, expected] of [
+    ['不存在', 'not found'],
+    ['重复', 'matched 2 locations'],
+  ]) {
+    try {
+      await a.write({ path: '/RULES.md', op: 'edit', old: old!, new: '替换' }, '2');
+      throw new Error('预期失败');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StashError);
+      expect(validationDetail((error as StashError).detail!)).toContain(expected);
+    }
+  }
+  await expect(
+    a.write({ path: '/notes/bad.md', op: 'create', content: '---\ntype: lesson\n---\n正文' }, '3'),
+  ).rejects.toMatchObject({ detail: { kind: 'note-field', field: 'description' } });
+  expect((await store.read('w', '/RULES.md'))?.content).toBe('- 重复\n- 重复');
+  expect(await store.read('w', '/notes/bad.md')).toBeNull();
+  expect(await store.journal('w')).toHaveLength(1);
 });
 
 it('跨实例写入原子检查旧版本，日志保留修改和外部删除', async () => {

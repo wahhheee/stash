@@ -8,10 +8,13 @@ export const en = {
   phase: 'Workspace memory, history and references are enabled.',
   refresh: 'Refresh',
   description: 'Plugin status and host connection',
-  copyReference: 'Copy reference',
+  copyReference: 'Copy turn reference',
+  copyReferenceHint:
+    'Paste into a conversation so the model can locate and read this turn’s original records.',
+  copyPending: 'Preparing turn reference…',
   copySession: 'Copy session reference',
   referenceLabel: '“{title}” turn {turn} · {time}',
-  copied: 'Copied',
+  copied: 'Turn reference copied',
   copyFailed: 'Copy failed. Please retry.',
 };
 
@@ -25,10 +28,12 @@ export const zh: typeof en = {
   phase: '工作区记忆、原始记录与引用已启用。',
   refresh: '刷新',
   description: '插件状态与宿主连接',
-  copyReference: '复制引用',
+  copyReference: '复制本轮引用',
+  copyReferenceHint: '粘贴到对话中，让模型定位并读取这一轮原始记录。',
+  copyPending: '正在获取本轮引用…',
   copySession: '复制会话引用',
   referenceLabel: '「{title}」第 {turn} 轮 · {time}',
-  copied: '已复制',
+  copied: '已复制本轮引用',
   copyFailed: '复制失败，请重试。',
 };
 

@@ -47,21 +47,30 @@ Write costly recurring lessons and concluded decisions under /notes/. One fact p
       },
     },
     {
-      "description": "Write workspace memory. Read before changing existing content. Rules have a token budget; credentials are rejected.",
+      "description": "Manage workspace rules and notes. Read the complete current file before edit, replace, archive or delete. create fails if the file exists; replace rewrites it; delete removes a note. Use only the fields listed for the selected op. Rules have a token budget; credentials are rejected.",
       "name": "memory_write",
       "parameters": {
         "additionalProperties": false,
         "properties": {
           "content": {
+            "description": "Required only for create, append and replace. Omit for edit, archive and delete. An empty string is content, not omission.",
             "type": "string",
           },
           "new": {
+            "description": "Required only for edit: replacement text; an empty string deletes the matched text. Omit for every other operation.",
             "type": "string",
           },
           "old": {
+            "description": "Required only for edit: non-empty literal text that appears exactly once. Omit for every other operation.",
             "type": "string",
           },
           "op": {
+            "description": "create: require content; omit other content fields.
+append: require content; omit other content fields.
+edit: require old and new; omit other content fields.
+replace: require content; omit other content fields.
+archive: use only path and op; omit content, old and new, even empty strings or null.
+delete: use only path and op; omit content, old and new, even empty strings or null.",
             "enum": [
               "create",
               "append",
@@ -73,6 +82,7 @@ Write costly recurring lessons and concluded decisions under /notes/. One fact p
             "type": "string",
           },
           "path": {
+            "description": "Workspace memory path: /RULES.md or /notes/<name>.md.",
             "type": "string",
           },
         },

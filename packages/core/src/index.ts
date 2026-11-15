@@ -1,6 +1,8 @@
 export type * from './ports/index.ts';
 export * from './trace/index.ts';
 export * from './errors.ts';
+export * from './write.ts';
+export * from './templates/validation.ts';
 export * from './templates/index.ts';
 export * from './namespace.ts';
 export * from './notes.ts';

@@ -1,6 +1,6 @@
 # stash
 
-DSH 工作区记忆插件。当前版本 0.2.1 提供工作区规则与笔记读写、常驻上下文、压缩后恢复、状态面板和离线重放。
+DSH 工作区记忆插件。当前版本 0.3.0 提供工作区规则与笔记读写、常驻上下文、压缩后恢复、原始记录检索、引用复制、状态面板和离线重放。
 
 ## 开发
 
@@ -45,7 +45,7 @@ Desktop：在“插件 → 添加插件”中输入 packages/plugin 的绝对目
 
 ```sh
 pnpm --dir packages/plugin pack --pack-destination ../..
-pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.2.1.tgz
+pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.3.0.tgz
 ```
 
 尚未发布 npm 包。唯一分发包为 @wahhheee/dsh-stash；core 和 devtools 均为私有工作区包。
@@ -70,6 +70,22 @@ description: Windows 构建产物过期时先 clean 再构建，只删 lib 无�
 
 记录适用条件、原因与证据；一篇只记一个事实。
 ```
+
+## 原始记录与引用
+
+向模型提供历史线索或粘贴引用，可通过 memory_view 查找原文：
+
+```json
+{"path":"/sessions","since":"2026-11-14T18:00:00-07:00","until":"2026-11-15T00:00:00-07:00"}
+{"path":"/sessions/<完整或唯一短ID>/log/turns"}
+{"path":"./log/summaries"}
+{"path":"./log","query":"架构"}
+{"path":"dsh://session/<完整ID>/10..30","detail":"full"}
+```
+
+事件窗口包含已压缩原文。单个事件引用自动展开所属轮次；范围引用严格保留边界。搜索支持中文子串、忽略大小写和宽松空白，工作区全量搜索需明确传 all: true；结果显示扫描范围和分叉去重信息。历史结果是参考材料，不自动成为规则。
+
+每轮助手回复的操作栏提供“复制引用”；会话菜单提供“复制会话引用”。复制内容为 Markdown 链接。工具也接受现有 dsh-session: URI。普通路径仅访问当前工作区；完整引用可只读访问其他工作区。分页保持同一组参数并使用返回的 cursor。
 
 ## 配置与诊断
 
@@ -96,6 +112,6 @@ pnpm devtools verify /path/to/stash-report.json.gz
 - [工程设计](docs/design.md)、[调试手册](docs/debugging.md)、[开发约定](AGENTS.md)。
 - [目标设计](docs/roadmap-design.md)、[阶段规划](docs/roadmap-plan.md)仅描述规划；[阶段二决策记录](docs/decisions/0002-workspace-memory.md)记录实际差异与收尾取舍。
 
-记忆按 DSH 工作区共享。可以对模型说“以后提交信息用简体中文”，由 memory_write 保存到 /RULES.md。笔记位于 /notes/，可用 memory_view 阅读。完整读取后才能覆盖或删除；工具写入和已观察到的外部编辑都有修改历史。会话路径、历史检索、开关界面和回滚尚未提供。
+记忆按 DSH 工作区共享。可以对模型说“以后提交信息用简体中文”，由 memory_write 保存到 /RULES.md。笔记位于 /notes/，可用 memory_view 阅读。完整读取后才能覆盖或删除；工具写入和已观察到的外部编辑都有修改历史。会话记忆、开关界面和回滚尚未提供。
 
 MIT License。

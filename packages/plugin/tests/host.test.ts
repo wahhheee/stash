@@ -17,12 +17,15 @@ import { renderPrompt } from '@deepseek-ai/dsh-system-prompt';
 import { expect, it } from 'vitest';
 import Stash from '../lib/index.js';
 import { TYPERT } from '../lib/typert.host.js';
+import { mountHistoryHost } from './history-host.ts';
+import { createAssistantMessage } from '@deepseek-ai/dsh-llm';
 
 it('真实 Cordis 命令、Remote、卸载重载与作用域清理', async () => {
   const ctx = new Context();
   const root = await mkdtemp(join(tmpdir(), 'stash-host-'));
   try {
     await mountAgentLoopTestDependencies(ctx);
+    await mountHistoryHost(ctx, root);
     await ctx.plugin(TokenMeter);
     await ctx.plugin(Commands);
     await ctx.plugin(TypertRegistry);
@@ -31,13 +34,13 @@ it('真实 Cordis 命令、Remote、卸载重载与作用域清理', async () =>
     const harness = await mountAgentLoopTestHarness(ctx);
     const agent = await harness.create(SessionId('stash-test-session'));
     const baseline = renderPrompt(await ctx.systemPrompt.assemble({ scope: agent }));
-    const plugin = ctx.plugin(Stash, { memoryRoot: root });
+    const plugin = ctx.plugin(Stash, { memoryRoot: join(root, 'memory') });
     await plugin;
     const definition = ctx.typert.register(TYPERT);
     const peer = new Peer(ctx, { principal: { kind: 'owner' } });
     const invoke = (args: Record<string, unknown> = {}) =>
       ctx.typertGateway.invoke({ namespace: 'stash', method: 'getStatus', args, peer });
-    expect(await invoke()).toMatchObject({ version: '0.2.1', phase: 2, memoryEnabled: true });
+    expect(await invoke()).toMatchObject({ version: '0.3.0', phase: 3, memoryEnabled: true });
     await expect(invoke({ secret: 'unexpected' })).rejects.toThrow();
     const command = await ctx.commands.execute(
       agent,
@@ -53,12 +56,41 @@ it('真实 Cordis 命令、Remote、卸载重载与作用域清理', async () =>
       'Workspace memory',
     );
     expect(agent.session.snapshotEvents().some((e) => e.type === 'user/message')).toBe(false);
+    const start = agent.session.append('turn/start', { turn: 1 });
+    agent.session.append('step/start', { turn: 1, step: 1 });
+    const message = createAssistantMessage({
+      source: { provider: 'mock', model: 'mock' },
+      content: [{ type: 'text', text: '已完成' }],
+    });
+    agent.session.append(
+      'assistant/message',
+      { turn: 1, step: 1, stream: [], message },
+      { surfaceOp: 'append' },
+    );
+    agent.session.append('step/end', { turn: 1, step: 1 });
+    const end = agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } });
+    expect(
+      await ctx.typertGateway.invoke({
+        namespace: 'stash',
+        method: 'getReference',
+        args: { sessionId: agent.id, messageId: message.id },
+        peer,
+      }),
+    ).toMatchObject({ id: agent.id, turn: 1, from: start.seq, to: end.seq });
+    await expect(
+      ctx.typertGateway.invoke({
+        namespace: 'stash',
+        method: 'getReference',
+        args: { sessionId: agent.id, messageId: '' },
+        peer,
+      }),
+    ).rejects.toThrow();
     await plugin.dispose();
     definition();
     expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: agent }))).toBe(baseline);
     expect(ctx.commands.find(agent, 'stash')).toBeUndefined();
     await expect(invoke()).rejects.toThrow();
-    await ctx.plugin(Stash, { memoryRoot: root });
+    await ctx.plugin(Stash, { memoryRoot: join(root, 'memory') });
     expect(ctx.commands.find(agent, 'stash')).toBeDefined();
   } finally {
     await ctx.fiber.dispose();

@@ -61,7 +61,7 @@ export const ReportSchema = z
     createdAt: z.iso.datetime(),
     version: z.string(),
     hostVersion: z.string(),
-    phase: z.union([z.literal(1), z.literal(2)]),
+    phase: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     config: z
       .object({
         trace: z.enum(['off', 'metadata', 'content']),
@@ -249,7 +249,7 @@ export async function writeReport(
     createdAt: new Date().toISOString(),
     version,
     hostVersion,
-    phase: 2,
+    phase: 3,
     config,
     checks,
     trace: trace.slice(-200),

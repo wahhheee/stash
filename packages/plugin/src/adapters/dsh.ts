@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-commands';
 import { StashRuntime } from '../host/runtime.ts';
 import { resolveConfig } from './config.ts';
 import type { Config } from './config.ts';
-import type { StashStatus } from '../types.ts';
+import type { StashStatus, StashReference } from '../types.ts';
 import { StashError } from '@wahhheee/stash-core';
 import manifest from '../../package.json' with { type: 'json' };
 import { MemoryAdapter } from './memory-dsh.ts';
@@ -18,8 +18,18 @@ declare module '@deepseek-ai/cordis' {
 
 /** DSH 服务边界负责注册、生命周期和宿主版本解析。 */
 export class StashService extends TypertRemoteService {
-  static inject = ['commands', 'agents', 'tools', 'systemPrompt', 'tokenMeter'];
+  static inject = [
+    'commands',
+    'agents',
+    'tools',
+    'systemPrompt',
+    'tokenMeter',
+    'sessionQuery',
+    'sessionProjections',
+    'workspaceRegistry',
+  ];
   private readonly runtime: StashRuntime;
+  private readonly memory: MemoryAdapter;
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'stash', { namespace: 'stash' });
@@ -27,6 +37,7 @@ export class StashService extends TypertRemoteService {
     const host = require('@deepseek-ai/dsh-commands/package.json') as { version: string };
     this.runtime = new StashRuntime(resolveConfig(config), manifest.version, host.version);
     const memory = new MemoryAdapter(ctx, this.runtime.config, this.runtime.trace);
+    this.memory = memory;
     const logger = ctx.logger('stash');
     ctx.effect(
       () =>
@@ -97,5 +108,19 @@ export class StashService extends TypertRemoteService {
   @Remote
   getStatus(): StashStatus {
     return this.runtime.status();
+  }
+
+  /** 从宿主完整日志定位消息所属轮次，客户端不依赖已加载的聊天窗口。 */
+  @Remote
+  async getReference(sessionId: string, messageId: string): Promise<StashReference> {
+    const reference = await (await this.memory.history).reference(sessionId, messageId);
+    return {
+      id: reference.id,
+      title: reference.title,
+      turn: reference.turn,
+      from: reference.from,
+      to: reference.to,
+      end: reference.end,
+    };
   }
 }

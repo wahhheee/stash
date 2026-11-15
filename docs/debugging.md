@@ -44,11 +44,17 @@ pnpm devtools verify /path/to/memory
 pnpm devtools verify /path/to/report.json.gz
 pnpm devtools render /path/to/memory/WORKSPACE_ID
 pnpm devtools view /path/to/memory/WORKSPACE_ID /RULES.md
+pnpm devtools view /path/to/memory/WORKSPACE_ID ./log/turns /path/to/DSH_HOME/sessions SESSION_ID
+pnpm devtools view /path/to/memory/WORKSPACE_ID /sessions /path/to/DSH_HOME/sessions SESSION_ID '{"query":"架构","all":true}'
 pnpm devtools journal /path/to/memory/WORKSPACE_ID
 pnpm devtools reconcile /path/to/memory/WORKSPACE_ID /path/to/DSH_HOME/sessions SESSION_ID
 ```
 
 以上命令只读。render 使用默认 1600 token 索引预算；自定义配置下应使用宿主 /stash render 查看精确文本。离线 view 完整输出文件，不给在线工具签发读取凭据。journal 包含记忆全文，请只在合适的位置查看。
+
+历史 view 使用同一渲染器，自动续读所有页面。离线会话清单仅按工作区最后已知路径与 cwd 精确匹配，工作区改名后用完整引用读取。STASH_SCOPE_REQUIRED 表示应指定会话或时间窗；STASH_AMBIGUOUS_REF 要求更长 ID；STASH_HISTORY_UNREADABLE 和 STASH_SEARCH_FAILED 表示读取失败，与 no-match 不同。续读 STASH_STALE_READ 时从第一页重新开始。
+
+阶段三扫描基准：pnpm exec tsx packages/devtools/src/benchmark-history.ts [输出目录]。默认写入 .exclude/history-benchmark，生成独立测试日志，不使用日常 DSH_HOME。测量范围和限制见 0004 决策记录。
 
 reconcile 使用宿主 persistence 的 read 句柄和 Session surface 投影，按决策记录引用的修改日志 ID 重建当时的实际记忆，再核对决策与实际消息。需要同时保留会话日志、工作区修改日志和决策记录；不靠当前文件或时间戳猜测历史。输出区分 OK 和没有发出模型请求的尝试，缺失材料明确失败。
 

@@ -5,9 +5,14 @@ export const en = {
   disconnected: 'Host unavailable',
   version: 'Plugin version',
   host: 'DSH version',
-  phase: 'Workspace memory and resident context are enabled.',
+  phase: 'Workspace memory, history and references are enabled.',
   refresh: 'Refresh',
   description: 'Plugin status and host connection',
+  copyReference: 'Copy reference',
+  copySession: 'Copy session reference',
+  referenceLabel: '“{title}” turn {turn} · {time}',
+  copied: 'Copied',
+  copyFailed: 'Copy failed. Please retry.',
 };
 
 export const zh: typeof en = {
@@ -17,9 +22,14 @@ export const zh: typeof en = {
   disconnected: '宿主不可用',
   version: '插件版本',
   host: 'DSH 版本',
-  phase: '工作区记忆与常驻上下文已启用。',
+  phase: '工作区记忆、原始记录与引用已启用。',
   refresh: '刷新',
   description: '插件状态与宿主连接',
+  copyReference: '复制引用',
+  copySession: '复制会话引用',
+  referenceLabel: '「{title}」第 {turn} 轮 · {time}',
+  copied: '已复制',
+  copyFailed: '复制失败，请重试。',
 };
 
 export type LocaleKey = keyof typeof en;

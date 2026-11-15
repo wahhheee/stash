@@ -1,13 +1,24 @@
 import { z } from 'zod';
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { StashStatus } from '../types.ts';
+import type { StashStatus, StashReference } from '../types.ts';
+
+const ReferenceSchema: z.ZodType<StashReference> = z
+  .object({
+    id: z.string().regex(/^[a-zA-Z0-9_-]{1,256}$/u),
+    title: z.string(),
+    turn: z.number().int().nonnegative(),
+    from: z.number().int().nonnegative(),
+    to: z.number().int().nonnegative(),
+    end: z.iso.datetime(),
+  })
+  .strict();
 
 export const StatusSchema: z.ZodType<StashStatus> = z
   .object({
     version: z.string(),
     hostVersion: z.string(),
-    phase: z.literal(2),
+    phase: z.literal(3),
     memoryEnabled: z.literal(true),
     trace: z.enum(['off', 'metadata', 'content']),
   })
@@ -18,6 +29,25 @@ export const TYPERT_REMOTE = createTypertRemoteInfo(
   {
     package: '@wahhheee/dsh-stash',
     methods: {
+      'stash/getReference': {
+        service: 'stash',
+        invocation: { kind: 'direct' },
+        parameters: ['sessionId', 'messageId'].map((name) => ({
+          name,
+          source: 'json' as const,
+          codec: {
+            mode: 'strict' as const,
+            typeSymbol: 'string',
+            create: () => z.string().min(1).max(256),
+          },
+          strictCodec: {
+            mode: 'strict' as const,
+            typeSymbol: 'string',
+            create: () => z.string().min(1).max(256),
+          },
+        })),
+        result: { mode: 'strict', typeSymbol: 'StashReference', create: () => ReferenceSchema },
+      },
       'stash/getStatus': {
         service: 'stash',
         invocation: { kind: 'direct' },
@@ -33,6 +63,9 @@ export default TYPERT_REMOTE;
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespaceMap {
-    stash: { getStatus(): Promise<RemoteResult<StashStatus>> };
+    stash: {
+      getStatus(): Promise<RemoteResult<StashStatus>>;
+      getReference(sessionId: string, messageId: string): Promise<RemoteResult<StashReference>>;
+    };
   }
 }

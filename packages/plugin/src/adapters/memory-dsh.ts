@@ -24,9 +24,23 @@ import type { ResolvedConfig } from './config.ts';
 import { FileMemoryStore, digest } from './memory-store.ts';
 import type { FileTraceSink } from './trace.ts';
 
+import { HistoryBrowser } from '../host/history.ts';
+import { DshHistory, historyProjection } from './history-dsh.ts';
+import { historyTarget } from '@wahhheee/stash-core';
+
 import { residentSchema } from './memory-records.ts';
 
-const viewSchema = z.object({ path: z.string(), cursor: z.string().optional() }).strict();
+const viewSchema = z
+  .object({
+    path: z.string(),
+    cursor: z.string().optional(),
+    query: z.string().optional(),
+    since: z.string().optional(),
+    until: z.string().optional(),
+    detail: z.enum(['brief', 'full']).optional(),
+    all: z.boolean().optional(),
+  })
+  .strict();
 
 const writeSchema = z
   .object({
@@ -90,6 +104,8 @@ function compactionRange(agent: Agent): string | undefined {
 /** 生命周期、宿主协议与领域用例之间的边界。 */
 export class MemoryAdapter {
   readonly store: FileMemoryStore;
+  readonly history: Promise<DshHistory>;
+  private readonly browsers = new WeakMap<Agent, HistoryBrowser>();
   private readonly memories = new WeakMap<Agent, Promise<WorkspaceMemory>>();
   private readonly decisions = new WeakMap<Agent, string[]>();
   private readonly meter: TokenEstimator;
@@ -100,6 +116,13 @@ export class MemoryAdapter {
     readonly trace: FileTraceSink,
   ) {
     this.store = new FileMemoryStore(config.memoryRoot);
+    this.history = ctx.sessionProjections
+      .register(historyProjection)
+      .then((handle) => new DshHistory(ctx, handle));
+    ctx.effect(async () => {
+      await this.history;
+      return () => undefined;
+    }, 'stash: history projection');
     this.meter = {
       estimate: (text) =>
         text
@@ -212,7 +235,30 @@ export class MemoryAdapter {
           execute: async (args) =>
             this.boundary(async () => {
               const input = viewSchema.parse(args);
-              return (await this.memory(agent)).view(input.path, input.cursor);
+              const memory = await this.memory(agent);
+              if (historyTarget(input.path, agent.id)) {
+                let browser = this.browsers.get(agent);
+                if (!browser) {
+                  browser = new HistoryBrowser(
+                    await this.history,
+                    memory.workspaceId,
+                    agent.id,
+                    this.meter,
+                    this.config.viewBudgetTokens,
+                  );
+                  this.browsers.set(agent, browser);
+                }
+                return browser.view(input);
+              }
+              if (
+                input.query !== undefined ||
+                input.since !== undefined ||
+                input.until !== undefined ||
+                input.detail !== undefined ||
+                input.all !== undefined
+              )
+                throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径');
+              return memory.view(input.path, input.cursor);
             }),
         });
         scope.tools.register({
@@ -278,7 +324,8 @@ export class MemoryAdapter {
       throw new HarnessError(
         toolError(
           code,
-          error instanceof StashError && error.code === 'STASH_BUDGET_EXCEEDED'
+          error instanceof StashError &&
+            ['STASH_BUDGET_EXCEEDED', 'STASH_AMBIGUOUS_REF'].includes(error.code)
             ? error.message
             : undefined,
         ),
@@ -329,7 +376,7 @@ export class MemoryAdapter {
           memory.workspaceId +
           '\n记忆目录：' +
           this.store.directory(memory.workspaceId) +
-          '\n开关：开（阶段二固定策略）\n规则：' +
+          '\n开关：开（固定策略）\n规则：' +
           this.meter.estimate(state.rules) +
           '/' +
           this.config.rulesBudgetTokens +

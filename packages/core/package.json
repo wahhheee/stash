@@ -1,9 +1,12 @@
 {
   "name": "@wahhheee/stash-core",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./refs": "./src/refs.ts"
+  },
   "dependencies": {
     "yaml": "2.8.2"
   }

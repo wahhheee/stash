@@ -1,7 +1,7 @@
 {
   "name": "@wahhheee/dsh-stash",
-  "version": "0.2.1",
-  "description": "DSH 工作区记忆、常驻上下文与诊断",
+  "version": "0.3.0",
+  "description": "DSH 工作区记忆、原始历史与引用",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -64,7 +64,9 @@
     "@deepseek-ai/dsh-llm": "0.2.2-rc.3",
     "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
     "@deepseek-ai/dsh-token-meter": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-compaction": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-compaction": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-query": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.3"
   },
   "dependencies": {
     "@deepseek-ai/dsh-home-paths": "0.2.2-rc.3",
@@ -96,6 +98,16 @@
     "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
     "@wahhheee/stash-core": "workspace:*",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "@deepseek-ai/dsh-session-query": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-chat": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-context-menu": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-projection-cache": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-storage": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-storage-json": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-storage-domain": "0.2.2-rc.3"
   }
 }

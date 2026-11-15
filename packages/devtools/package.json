@@ -1,6 +1,6 @@
 {
   "name": "@wahhheee/stash-devtools",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -10,6 +10,8 @@
     "@deepseek-ai/dsh-session-persistence-jsonl": "0.2.2-rc.3",
     "@wahhheee/dsh-stash": "workspace:*",
     "@wahhheee/stash-core": "workspace:*",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.3"
   }
 }

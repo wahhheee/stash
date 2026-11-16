@@ -25,6 +25,16 @@ status 展示版本、工作区、记忆目录与预算；context 比较可见�
 
 锁定 SDK 只识别内置命令，/stash 会进入模型对话，不应传入 SDK run。自动化的人类命令使用 Web Gateway commands/execute；SDK 验收通过捕获本地 mock 请求验证工具与记忆。SDK 的 /compact 是宿主内置命令，可用于压缩恢复验收。
 
+## 开关与页面故障
+
+全局 enabled 在宿主插件设置修改；工作区设置位于 workspace.json 的 switches，会话设置位于宿主 stash_switches 存储域。不要修改版本字段。全局关闭时下级设置禁用；工作区关闭可由会话明确开启覆盖。只读只限制模型。
+
+页面保存失败保留草稿。STASH_STALE_READ 表示加载版本已变化，请先保留草稿再刷新；会话忙碌时等请求结束再试。空白会话的编辑通知不能先于宿主受保护系统节点，因此首次请求后才开放会话记忆编辑。工作区编辑和全部开关不受此限制。
+
+隐私设置变化后，旧的历史 cursor 立即失效，需要从原路径重新读取；普通短路径隐藏私有会话，完整引用仍能访问。
+
+清空只删除当前规则和笔记，不删除设置、原始记录、既有分叉或修改日志。工作区清空中断可能部分完成，先让 pending 恢复，再刷新检查剩余内容。
+
 ## 磁盘与故障
 
 memoryRoot/<WorkspaceId>/ 包含 workspace.json、RULES.md、notes/、.journal.jsonl 和 .decisions-<SessionId>.jsonl。先通过 status 确定目标工作区。不要手工改日志或版本字段。

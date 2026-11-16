@@ -1,10 +1,10 @@
-# stash 0.4.0 工程设计
+# stash 0.5.0 工程设计
 
-stash 是 DSH 外部插件，提供工作区与会话规则及笔记、分叉继承、常驻上下文、原始历史查询与引用、状态面板、诊断和离线重放。开关界面和整理回滚尚未实现。长期设计见 [目标设计](roadmap-design.md)。
+stash 是 DSH 外部插件，提供工作区与会话规则及笔记、分叉继承、常驻上下文、原始历史查询与引用、三级开关、记忆编辑页、诊断和离线重放。整理回滚尚未实现。长期设计见 [目标设计](roadmap-design.md)。
 
 ## 分层
 
-core 包含宿主无关端口、工作区路径校验、YAML frontmatter、规则展开、索引折叠、可见状态折叠和全部模型模板。YAML 解析使用 yaml；未知字段和类型保留。plugin/adapters 负责宿主协议、配置、文件系统和持久格式；host 编排读写与固定开关策略；client 提供状态面板。devtools 提供离线只读检查、重放与测试夹具。只有 plugin 发布，core 和 yaml 内联进产物。
+core 包含宿主无关端口、工作区路径校验、YAML frontmatter、规则展开、索引折叠、可见状态折叠和全部模型模板。YAML 解析使用 yaml；未知字段和类型保留。plugin/adapters 负责宿主协议、配置、文件系统和持久格式；host 编排读写；core 计算继承开关，adapters 负责宿主策略与设置持久化；client 提供记忆页和输入框控件。devtools 提供离线只读检查、重放与测试夹具。只有 plugin 发布，core 和 yaml 内联进产物。
 
 ## 工作区存储
 
@@ -48,11 +48,11 @@ memory_write 支持 create、append、edit、replace、archive、delete。create
 
 压缩删除快照后，最新完整快照重新进入上下文，包含宿主 checkpoint 的源事件范围。范围行提供 ./log/<a>..<b> 原文读取提示。记忆中的尖括号在注入时转义，避免提前闭合模板。
 
-开关由 host/policy 统一提供固定开启策略，界面没有开关。externalRuleUpdates 可选择下次请求或下次完整恢复时生效。无独立私有“已发送”缓存作为事实来源。
+全局 enabled 是硬总闸，工作区与会话三态设置取最近明确值。宿主工具启用条件在提示组装前计算，初始关闭时不向模型暴露工具与说明；同一 agent 开启后保留声明，执行时再校验。关闭通知与模式变化使用完整常驻记录，重新开启恢复完整快照。干净模式跳过工作区规则和索引，保留会话层。externalRuleUpdates 可选择下次请求或下次完整恢复时生效。无独立私有“已发送”缓存作为事实来源。
 
 ## 会话记忆与分支
 
-会话层不落独立 Markdown 文件。每次写入产生 v: 1 提交，包含 UUID、写入时会话 ID、路径、结果全文或 null、修改前后 SHA-256。原生调用保存在成功 tool/result 的 meta.stashCommit；PTC 嵌套调用通过 deferContext 追加 stash-commit 来源消息。失败工具结果不作为提交；通知载体也供后续界面编辑使用。界面编辑入口尚未提供。
+会话层不落独立 Markdown 文件。每次写入产生 v: 1 提交，包含 UUID、写入时会话 ID、路径、结果全文或 null、修改前后 SHA-256。原生调用保存在成功 tool/result 的 meta.stashCommit；PTC 嵌套调用通过 deferContext 追加 stash-commit 来源消息。失败工具结果不作为提交；通知载体也供后续界面编辑使用。界面编辑复用通知载体，在首次请求建立受保护系统节点后开放；空白会话仍可编辑工作区与开关。
 
 stashSessionMemory 是 stateVersion: 1 的宿主投影，按原始事件顺序折叠提交，验证版本、哈希、路径、凭据与修改前版本。相同提交 ID 和内容指纹幂等，冲突 ID 与断链明确失败。宿主裁剪产生的重复结果不重复应用；压缩移除可见消息不会移除原始提交。缓存由宿主维护，可以删除并从原始日志重建。
 
@@ -72,7 +72,7 @@ stashSessionMemory 是 stateVersion: 1 的宿主投影，按原始事件顺序�
 
 ## 原始记录与引用
 
-memory_view 支持 /sessions、/sessions/<id>/log/turns、log/summaries、log/<seq>、log/<a>..<b> 和 ./log。完整 dsh://session/<id> 引用可带事件或事件范围；dsh-session: 解码为会话引用。工作区内的短 ID 去掉 session- 前缀，从至少八个字符扩展至唯一；歧义报错并返回候选。普通路径通过 WorkspaceId 的 sessionIds 限定范围，完整引用可只读访问其他工作区。发现策略接口当前一律可见，不提供隐私开关。
+memory_view 支持 /sessions、/sessions/<id>/log/turns、log/summaries、log/<seq>、log/<a>..<b> 和 ./log。完整 dsh://session/<id> 引用可带事件或事件范围；dsh-session: 解码为会话引用。工作区内的短 ID 去掉 session- 前缀，从至少八个字符扩展至唯一；歧义报错并返回候选。普通路径通过 WorkspaceId 的 sessionIds 限定范围，完整引用可只读访问其他工作区。发现策略按会话 discoverable 过滤普通路径、清单与搜索；当前会话与完整引用不受过滤。设置变化使历史分页快照失效。
 
 宿主适配器通过 sessionQuery 的只读观察与同步 inspectSession 读取活动或持久会话，不恢复 agent、不写原始日志。stashHistory 是 stateVersion: 1 的宿主投影，记录轮次起止 seq、时间、首个用户文本预览和最后助手文本预览；宿主 projection cache 保存并验证检查点。单个事件引用展开所属完整轮次；范围引用严格保留边界，缺失边界明确失败。brief 省略推理并折叠长事件，full 返回完整事件 JSON；两者均脱敏已识别的凭据。压缩摘要由 isCompactCheckpointSource 识别，输出原始 sourceEventSeqs。
 
@@ -86,10 +86,23 @@ query 仅用于历史路径。匹配基于宿主 extractSessionEventText 生成�
 
 离线 view 可附 sessions 目录、当前会话 ID 和查询选项 JSON，使用宿主 read 句柄和同一模板完成分页。离线目录没有工作区注册表，清单按 workspace.json 中最后已知路径与日志 cwd 精确相等筛选，路径改名后的成员应通过完整引用读取。离线操作不写投影缓存。
 
+## 开关存储与记忆页
+
+工作区设置是 workspace.json 的可选 switches（v: 1），与文件写入共用锁并原子替换，元信息刷新保留设置。会话设置使用宿主 stash_switches 域（版本 1）按 ID 持久化；分叉按切口事件指纹推断源并复制，一致的多候选可复制，不一致明确失败。开关不进入内容修改链，决策记录保存生效策略以支持离线重放。
+
+右侧栏提供三态开关、会话隐私及继承、规则与笔记全文编辑、新建、删除、提升、清空；输入框提供会话四项设置，工作区菜单跳转到对应工作区的记忆页。全局硬闸通过宿主插件配置修改。中英文文案跟随宿主。
+
+页面读取使用只读历史观察，不恢复冷会话。人工保存校验用户加载时的 SHA-256，独立编辑实例不授予模型读后改资格；所有路径、格式、凭据和预算校验复用原实现。会话修改在宿主维护时段执行，追加提交通知后显式 flush；活动请求期间拒绝修改并保留草稿。
+
+清空检查整个加载快照哈希，工作区持锁逐项追加可恢复删除记录，会话追加删除提交。两者均保留设置、修改历史与原始对话，既有分叉不变。工作区批量删除不具备跨文件原子性，故障后刷新可见已完成部分。界面二次确认说明范围。
+
+本客户端修改和连接重置触发刷新，外部修改可手动刷新；草稿不被刷新静默覆盖，版本检查负责最终冲突保护。具体取舍见[阶段五决策](decisions/0005-switches-memory-page.md)。
+
 ## 配置
 
 | 配置                | 默认            | 说明                            |
 | ------------------- | --------------- | ------------------------------- |
+| enabled             | true            | 全局记忆开关，宿主配置重载生效  |
 | subagentWrite       | false           | 放开子代理写入工作区与自身会话  |
 | memoryRoot          | DSH_HOME/memory | 绝对路径、相对 DSH_HOME 或 ~    |
 | rulesBudgetTokens   | 1600            | 128–32000，每层展开后的规则预算 |
@@ -103,7 +116,7 @@ query 仅用于历史路径。匹配基于宿主 extractSessionEventText 生成�
 
 ## 诊断与重放
 
-/stash status 显示版本、记忆目录、预算与固定开关；context 比较工作区、会话层的可见与实际版本；render 输出现在完整注入的文本；explain [1–100] 显示当前实例最近的决策及哈希。doctor 检查权限、格式、修改链、文件一致性、锁和待提交记录。
+/stash status 显示版本、记忆目录、预算与生效开关及来源；context 比较工作区、会话层的可见与实际版本；render 输出现在完整注入的文本；explain [1–100] 显示当前实例最近的决策及哈希。doctor 检查权限、格式、修改链、文件一致性、锁和待提交记录。
 
 每个工作区保存 .decisions-<SessionId>.jsonl，每行 v: 1，仅包含请求前日志位置、修改日志版本 ID、配置、决策、正文哈希和压缩范围，没有正文。它独立于可关闭的 trace，用于精确离线重放；当前不自动清理。决策文件继续采用整体原子替换，每次写入校验已有记录；当前没有为它提供残缺尾部恢复。reconcile 用 DSH persistence 的 read 句柄读取日志，以 Session 重建各请求前的 surface，并从修改日志版本重建实际记忆，比较决策和实际注入文本。未发出模型请求的尝试单独标注。重放需要完整会话日志、工作区修改日志与决策记录；子代理还需其引用的父会话日志。阶段四决策含 sessionMemory 标志，兼容没有该字段的旧工作区决策。离线 fold 按提交输出每一步的文件状态。
 

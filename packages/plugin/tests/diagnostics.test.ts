@@ -57,6 +57,7 @@ describe('诊断基础设施', () => {
   it('报告剥离正文，脱敏凭据，拒绝未来版本与损坏文件', async () => {
     const root = await temporary();
     const config = {
+      subagentWrite: false,
       rulesBudgetTokens: 1600,
       indexBudgetTokens: 1600,
       viewBudgetTokens: 4000,
@@ -76,7 +77,7 @@ describe('诊断基础设施', () => {
     const checks = await doctor(config, '0.2.2-rc.3');
     expect(checks.every((c) => c.ok)).toBe(true);
     const report = await readReport(await writeReport(config, '0.1.0', '0.2.2-rc.3', checks));
-    expect(report.phase).toBe(3);
+    expect(report.phase).toBe(4);
     expect(report.trace).toHaveLength(1);
     expect(report.trace[0]).not.toHaveProperty('content');
     expect(JSON.stringify(report)).not.toContain('a'.repeat(30));
@@ -105,6 +106,7 @@ describe('诊断基础设施', () => {
   it('命令严格解析，trace 切换仅影响本实例', async () => {
     const root = await temporary();
     const config = {
+      subagentWrite: false,
       rulesBudgetTokens: 1600,
       indexBudgetTokens: 1600,
       viewBudgetTokens: 4000,

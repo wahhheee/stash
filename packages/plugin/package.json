@@ -1,6 +1,6 @@
 {
   "name": "@wahhheee/dsh-stash",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "DSH 工作区记忆、原始历史与引用",
   "type": "module",
   "license": "MIT",

@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import {
   StashError,
+  sessionMemoryTarget,
+  sessionNoteHits,
+  parseNote,
   historyTarget,
   resolveSessionId,
   timeWindow,
@@ -85,7 +88,10 @@ export class HistoryBrowser {
   }
 
   private async render(input: HistoryInput): Promise<string> {
-    const target = historyTarget(input.path, this.current);
+    const memoryTarget = sessionMemoryTarget(input.path, this.current);
+    const target = memoryTarget
+      ? { id: memoryTarget.id, explicit: memoryTarget.explicit, view: 'turns' as const }
+      : historyTarget(input.path, this.current);
     if (!target) throw new StashError('STASH_UNSUPPORTED', '非历史路径');
     const range = timeWindow(input.since, input.until);
     const query = input.query === undefined ? undefined : literalText(input.query);
@@ -108,6 +114,30 @@ export class HistoryBrowser {
         query ? 'STASH_SEARCH_FAILED' : 'STASH_HISTORY_UNREADABLE',
         '无法完整读取历史范围',
       );
+    }
+    if (memoryTarget) {
+      if (
+        input.query !== undefined ||
+        input.since !== undefined ||
+        input.until !== undefined ||
+        input.detail !== undefined ||
+        input.all !== undefined
+      )
+        throw new StashError('STASH_UNSUPPORTED', '会话记忆只支持路径和续读');
+      const files = sessions[0]!.memory ?? {};
+      const path = memoryTarget.path;
+      if (path === '/' || path === '/notes' || path.endsWith('/'))
+        return Object.entries(files)
+          .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
+          .map(
+            ([p, content]) =>
+              p +
+              (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
+          )
+          .join('\n');
+      const content = files[path];
+      if (content === undefined) throw new StashError('STASH_NOT_FOUND', '会话文件不存在');
+      return content;
     }
     if (
       target.window &&
@@ -133,12 +163,27 @@ export class HistoryBrowser {
         query,
         limit: Number.MAX_SAFE_INTEGER,
       });
-      return historySearchResult(
-        deduplicateHistory(result.hits),
-        result.scannedSessions,
-        input.since,
-        input.until,
-        input.query,
+      const notes =
+        target.view === 'sessions'
+          ? sessions
+              .filter((s) => inRange(s.created) || s.events.some((e) => inRange(e.timestamp)))
+              .flatMap((s) =>
+                Object.entries(s.memory ?? {})
+                  .filter(
+                    ([p, text]) => p.startsWith('/notes/') && literalText(text).includes(query),
+                  )
+                  .map(([path, content]) => ({ id: s.id, path, content })),
+              )
+          : [];
+      return (
+        historySearchResult(
+          deduplicateHistory(result.hits),
+          result.scannedSessions,
+          input.since,
+          input.until,
+          input.query,
+          notes.length,
+        ) + (notes.length ? sessionNoteHits(notes) : '')
       );
     }
     if (target.view === 'sessions')

@@ -1,3 +1,4 @@
+import { eventResident } from './memory-records.ts';
 import type { Context } from '@deepseek-ai/cordis';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session';
@@ -14,6 +15,9 @@ import type {
   EventWindow,
   WorkspacePort,
 } from '@wahhheee/stash-core';
+import { foldSession, eventCommit } from './session-memory.ts';
+import { commitFiles } from '@wahhheee/stash-core';
+import type { CommitState } from '@wahhheee/stash-core';
 import { digest } from './memory-store.ts';
 import { redact } from './redaction.ts';
 
@@ -76,6 +80,7 @@ export class DshHistory implements HistoryPort, WorkspacePort {
   constructor(
     private readonly ctx: Context,
     private readonly projection: ProjectionHandle<readonly HistoryTurn[]>,
+    private readonly memoryProjection?: ProjectionHandle<CommitState>,
   ) {}
 
   private async inspect<T>(id: string, read: (session: Session) => T): Promise<T> {
@@ -87,6 +92,40 @@ export class DshHistory implements HistoryPort, WorkspacePort {
     } finally {
       observation[Symbol.dispose]();
     }
+  }
+
+  async lineage(id: string): Promise<{ source: string | null; candidates: string[] } | undefined> {
+    const prefix = await this.inspect(id, (session) =>
+      session.snapshotEvents().slice(0, session.inheritedEventCount),
+    );
+    if (!prefix.length) return undefined;
+    for (const event of [...prefix].reverse()) {
+      const commit = eventCommit(event);
+      const source = commit?.sessionId ?? eventResident(event)?.state.session?.id;
+      if (source && source !== id) return { source, candidates: [source] };
+    }
+    const cut = prefix.findLast((e) => e.type !== 'session/end-seed');
+    if (!cut) return { source: null, candidates: [] };
+    const workspace = await this.forSession(id);
+    const candidates: string[] = [];
+    for (const candidate of workspace?.sessionIds ?? []) {
+      if (candidate === id) continue;
+      const matches = await this.inspect(candidate, (session) => {
+        const event = session.eventAt(cut.seq);
+        return event !== undefined && digest(JSON.stringify(event)) === digest(JSON.stringify(cut));
+      });
+      if (matches) candidates.push(candidate);
+    }
+    return { source: candidates.length === 1 ? candidates[0]! : null, candidates };
+  }
+
+  async memorySnapshot(id: string) {
+    return this.inspect(id, (session) => ({
+      files: commitFiles(
+        this.memoryProjection?.stateOf(session) ?? foldSession(session.snapshotEvents()),
+      ),
+      beforeSeq: session.snapshotEvents().length,
+    }));
   }
 
   async get(id: string) {
@@ -110,6 +149,7 @@ export class DshHistory implements HistoryPort, WorkspacePort {
   }
 
   async session(id: string) {
+    const lineage = await this.lineage(id);
     return this.inspect(id, (session) => {
       const raw = session.snapshotEvents();
       const title = raw.findLast((e) => e.type === 'session/title');
@@ -117,10 +157,14 @@ export class DshHistory implements HistoryPort, WorkspacePort {
       const turns = this.projection.stateOf(session).map((t) => ({ ...t }));
       return {
         id,
+        ...(lineage ? { lineage } : {}),
         title: redact(title?.type === 'session/title' ? title.data.title : id),
         created: new Date(session.header.createdAt).toISOString(),
         events,
         turns,
+        memory: Object.fromEntries(
+          commitFiles(this.memoryProjection?.stateOf(session) ?? foldSession(raw)),
+        ),
       };
     });
   }

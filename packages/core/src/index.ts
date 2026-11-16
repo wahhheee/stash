@@ -10,4 +10,5 @@ export * from './rules.ts';
 export * from './resident.ts';
 export * from './refs.ts';
 export * from './history.ts';
+export * from './commits.ts';
 export * from './templates/history.ts';

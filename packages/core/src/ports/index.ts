@@ -82,6 +82,8 @@ export interface MemoryCommit {
   readonly sessionId: string;
   readonly path: string;
   readonly content: string | null;
+  readonly beforeRevision: string | null;
+  readonly revision: string | null;
 }
 
 export interface CommitCarrier {

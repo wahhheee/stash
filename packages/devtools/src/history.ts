@@ -1,3 +1,5 @@
+import { foldSession } from '../../plugin/src/adapters/session-memory.ts';
+import { commitFiles } from '@wahhheee/stash-core';
 import { Context } from '@deepseek-ai/cordis';
 import * as Persistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
@@ -44,6 +46,7 @@ export async function viewHistory(
             created: new Date(handle.header.createdAt).toISOString(),
             events,
             turns,
+            memory: Object.fromEntries(commitFiles(foldSession(raw))),
           };
         } finally {
           await handle.close();

@@ -4,6 +4,7 @@ import { resolveDshHome, expandHomePath } from '@deepseek-ai/dsh-home-paths';
 import type { TraceLevel } from '@wahhheee/stash-core';
 
 export interface Config {
+  subagentWrite?: boolean;
   trace?: TraceLevel;
   traceRetentionDays?: number;
   memoryRoot?: string;
@@ -14,6 +15,7 @@ export interface Config {
 }
 
 export const Config: Schema<Config> = Schema.object({
+  subagentWrite: Schema.boolean().default(false).description('允许子代理写入记忆。'),
   trace: Schema.union(['off', 'metadata', 'content'])
     .default('off')
     .description('Trace 级别；content 包含正文。'),
@@ -29,13 +31,13 @@ export const Config: Schema<Config> = Schema.object({
     .min(128)
     .max(32000)
     .default(1600)
-    .description('工作区规则预算。'),
+    .description('工作区和会话层各自的规则预算。'),
   indexBudgetTokens: Schema.number()
     .step(1)
     .min(128)
     .max(32000)
     .default(1600)
-    .description('常驻笔记索引预算。'),
+    .description('工作区和会话层各自的常驻笔记索引预算。'),
   viewBudgetTokens: Schema.number()
     .step(1)
     .min(256)
@@ -48,6 +50,7 @@ export const Config: Schema<Config> = Schema.object({
 });
 
 export interface ResolvedConfig {
+  subagentWrite: boolean;
   trace: TraceLevel;
   traceRetentionDays: number;
   memoryRoot: string;
@@ -63,6 +66,7 @@ export function resolveConfig(input: Config = {}): ResolvedConfig {
   const root = config.memoryRoot?.trim();
   const expanded = root ? expandHomePath(root) : join(home, 'memory');
   return {
+    subagentWrite: config.subagentWrite ?? false,
     trace: config.trace ?? 'off',
     rulesBudgetTokens: config.rulesBudgetTokens ?? 1600,
     indexBudgetTokens: config.indexBudgetTokens ?? 1600,

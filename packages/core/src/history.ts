@@ -28,6 +28,8 @@ export interface HistoryTurn {
 }
 
 export interface HistorySession {
+  memory?: Record<string, string>;
+  lineage?: { source: string | null; candidates: string[] };
   id: string;
   title: string;
   created: string;

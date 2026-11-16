@@ -1,9 +1,32 @@
 import { StashError } from './errors.ts';
+import { sessionId } from './refs.ts';
 
-/** 只接受可跨平台原样落盘的工作区路径。 */
+export function sessionMemoryTarget(
+  path: string,
+  current: string,
+): { id: string; path: string; explicit: boolean; writable: boolean } | null {
+  if (path.startsWith('./') && !/^\.\/log(?:\/|$)/u.test(path))
+    return {
+      id: sessionId(current),
+      path: memoryPath(path.slice(1)),
+      explicit: true,
+      writable: true,
+    };
+  const match =
+    /^(?:\.\.\/|\/sessions\/|dsh:\/\/session\/)([^/]+)\/(RULES\.md|notes(?:\/.*)?|)$/u.exec(path);
+  if (!match) return null;
+  return {
+    id: sessionId(match[1]!),
+    path: memoryPath('/' + match[2]!),
+    explicit: path.startsWith('dsh://'),
+    writable: false,
+  };
+}
+
+/** 只接受作用域内部的规范路径；工作区路径可跨平台原样落盘。 */
 export function memoryPath(path: string, writable = false): string {
   if (path.startsWith('./') || path.startsWith('../') || path.startsWith('/sessions'))
-    throw new StashError('STASH_UNSUPPORTED', '当前只支持工作区记忆');
+    throw new StashError('STASH_UNSUPPORTED', '会话路径须先解析作用域');
   if (
     !path.startsWith('/') ||
     /[\\:%]/u.test(path) ||

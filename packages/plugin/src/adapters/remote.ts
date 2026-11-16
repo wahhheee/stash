@@ -18,7 +18,7 @@ export const StatusSchema: z.ZodType<StashStatus> = z
   .object({
     version: z.string(),
     hostVersion: z.string(),
-    phase: z.literal(3),
+    phase: z.literal(4),
     memoryEnabled: z.literal(true),
     trace: z.enum(['off', 'metadata', 'content']),
   })

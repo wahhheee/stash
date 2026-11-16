@@ -1,3 +1,5 @@
+import { foldSession } from '../../plugin/src/adapters/session-memory.ts';
+import { commitFiles, expandRules } from '@wahhheee/stash-core';
 import type {} from '@deepseek-ai/dsh-session-persistence';
 import { Context } from '@deepseek-ai/cordis';
 import * as Persistence from '@deepseek-ai/dsh-session-persistence-jsonl';
@@ -8,7 +10,7 @@ import { join } from 'node:path';
 import { composeResident, foldResident, decideResident } from '@wahhheee/stash-core';
 import type { ResidentRecord } from '@wahhheee/stash-core';
 import { FileMemoryStore, digest } from '../../plugin/src/adapters/memory-store.ts';
-import { residentSchema, auditSchema } from '../../plugin/src/adapters/memory-records.ts';
+import { eventResident, auditSchema } from '../../plugin/src/adapters/memory-records.ts';
 
 export const offlineMeter = { estimate: (text: string) => Math.ceil(text.length / 4) };
 
@@ -55,18 +57,35 @@ export async function reconcile(
         const records: ResidentRecord[] = [];
         for (const seq of prefix.surface.nodes) {
           const event = prefix.eventAt(seq);
-          if (event?.type === 'user/message' && event.data.source.kind === 'stash-memory')
-            records.push(residentSchema.parse(event.data.source.stash));
-          if (
-            event?.type === 'tool/result' &&
-            !event.data.message.isError &&
-            event.data.meta &&
-            typeof event.data.meta === 'object' &&
-            'stash' in event.data.meta
-          )
-            records.push(residentSchema.parse(event.data.meta.stash));
+          const record = eventResident(event);
+          if (record) records.push(record);
         }
         const actual = composeResident(files, offlineMeter, audit.config.indexBudgetTokens);
+        if (audit.sessionMemory) {
+          const state = composeResident(
+            commitFiles(foldSession(prefix.snapshotEvents())),
+            offlineMeter,
+            audit.config.indexBudgetTokens,
+            '.',
+          );
+          actual.session = {
+            ...state,
+            id: sessionId,
+            readOnly: audit.readOnly ?? false,
+          };
+        }
+        if (audit.parent && actual.session) {
+          const parent = await ctx.sessionPersistence.open(SessionId(audit.parent.id), 'read');
+          try {
+            const { events: parentEvents } = await parent.read();
+            if (audit.parent.beforeSeq > parentEvents.length) throw new Error('父会话记录不足');
+            actual.session.parentRules = expandRules(
+              commitFiles(foldSession(parentEvents.slice(0, audit.parent.beforeSeq))),
+            );
+          } finally {
+            await parent.close();
+          }
+        }
         const expected = decideResident(
           foldResident(records, workspaceId),
           actual,

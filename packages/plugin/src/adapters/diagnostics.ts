@@ -61,10 +61,11 @@ export const ReportSchema = z
     createdAt: z.iso.datetime(),
     version: z.string(),
     hostVersion: z.string(),
-    phase: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    phase: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
     config: z
       .object({
         trace: z.enum(['off', 'metadata', 'content']),
+        subagentWrite: z.boolean().optional(),
         traceRetentionDays: z.number().int().min(1).max(365),
         memoryRoot: z.string(),
         rulesBudgetTokens: z.number().optional(),
@@ -249,7 +250,7 @@ export async function writeReport(
     createdAt: new Date().toISOString(),
     version,
     hostVersion,
-    phase: 3,
+    phase: 4,
     config,
     checks,
     trace: trace.slice(-200),

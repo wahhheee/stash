@@ -17,9 +17,12 @@ import {
   validationDetail,
   foldResident,
   decideResident,
-  fullContext,
+  renderResident,
+  sessionMemoryTarget,
+  sessionWriteResult,
+  expandRules,
 } from '@wahhheee/stash-core';
-import type { ResidentRecord, TokenEstimator } from '@wahhheee/stash-core';
+import type { ResidentRecord, ResidentState, TokenEstimator } from '@wahhheee/stash-core';
 import { WorkspaceMemory } from '../host/memory.ts';
 import type { ResolvedConfig } from './config.ts';
 import { FileMemoryStore, digest } from './memory-store.ts';
@@ -29,7 +32,8 @@ import { HistoryBrowser } from '../host/history.ts';
 import { DshHistory, historyProjection } from './history-dsh.ts';
 import { historyTarget } from '@wahhheee/stash-core';
 
-import { residentSchema } from './memory-records.ts';
+import { residentSchema, eventResident } from './memory-records.ts';
+import { sessionMemoryProjection, SessionMemoryStore, commitMessage } from './session-memory.ts';
 import { parseWriteInput } from './write-input.ts';
 
 const viewSchema = z
@@ -60,18 +64,8 @@ export function visibleRecords(agent: Agent): ResidentRecord[] {
   const records: ResidentRecord[] = [];
   for (const seq of agent.session.surface.nodes) {
     const event = agent.session.eventAt(seq);
-    let value: unknown;
-    if (event?.type === 'user/message' && event.data.source.kind === 'stash-memory')
-      value = event.data.source.stash;
-    if (
-      event?.type === 'tool/result' &&
-      !event.data.message.isError &&
-      event.data.meta &&
-      typeof event.data.meta === 'object' &&
-      'stash' in event.data.meta
-    )
-      value = event.data.meta.stash;
-    if (value !== undefined) records.push(residentSchema.parse(value));
+    const record = eventResident(event);
+    if (record) records.push(record);
   }
   return records;
 }
@@ -90,8 +84,14 @@ function compactionRange(agent: Agent): string | undefined {
 export class MemoryAdapter {
   readonly store: FileMemoryStore;
   readonly history: Promise<DshHistory>;
+  readonly sessionProjection;
+  private readonly sessionMemories = new WeakMap<
+    Agent,
+    { store: SessionMemoryStore; memory: WorkspaceMemory }
+  >();
   private readonly browsers = new WeakMap<Agent, HistoryBrowser>();
   private readonly memories = new WeakMap<Agent, Promise<WorkspaceMemory>>();
+  private readonly parents = new WeakMap<Agent, { id: string; beforeSeq: number }>();
   private readonly decisions = new WeakMap<Agent, string[]>();
   private readonly meter: TokenEstimator;
 
@@ -101,9 +101,10 @@ export class MemoryAdapter {
     readonly trace: FileTraceSink,
   ) {
     this.store = new FileMemoryStore(config.memoryRoot);
+    this.sessionProjection = ctx.sessionProjections.register(sessionMemoryProjection);
     this.history = ctx.sessionProjections
       .register(historyProjection)
-      .then((handle) => new DshHistory(ctx, handle));
+      .then(async (handle) => new DshHistory(ctx, handle, await this.sessionProjection));
     ctx.effect(async () => {
       await this.history;
       return () => undefined;
@@ -138,8 +139,10 @@ export class MemoryAdapter {
       for (const message of decision.messages)
         if (message.source.kind === 'stash-memory')
           records.push(residentSchema.parse(message.source.stash));
+      const session = await this.sessionMemory(agent);
+      session.store.reset();
       const observed = await memory.observe();
-      const actual = observed.state;
+      const actual = await this.actual(agent, observed.state);
       const believed = foldResident(records, memory.workspaceId);
       const result = decideResident(
         believed,
@@ -165,7 +168,7 @@ export class MemoryAdapter {
         timestamp: new Date().toISOString(),
         kind: 'inject.decide',
         sessionId: agent.id,
-        decision: result.kind === 'rules' ? 'delta' : result.kind,
+        decision: result.kind === 'rules' || result.kind === 'position' ? 'delta' : result.kind,
         code: result.reason,
         hash: digest(actual.rules),
         tokens: this.meter.estimate(result.text),
@@ -186,13 +189,22 @@ export class MemoryAdapter {
         reason: result.reason,
         textHash: digest(result.text),
         compacted: compactionRange(agent) ?? null,
+        sessionMemory: true,
+        ...(this.parents.has(agent) ? { parent: this.parents.get(agent)! } : {}),
+        readOnly: !memoryPolicy.writable(
+          agent.session.header.origin === 'subagent',
+          config.subagentWrite,
+        ),
       });
       if (result.kind === 'none') return decision;
       const stash: ResidentRecord = {
         v: 1,
         workspaceId: memory.workspaceId,
         kind: result.kind,
-        state: actual,
+        state:
+          result.kind === 'position' && believed
+            ? { ...believed, session: actual.session! }
+            : actual,
       };
       return {
         ...decision,
@@ -210,6 +222,12 @@ export class MemoryAdapter {
   private async attach(agent: Agent): Promise<void> {
     const scoped = agent.ctx.plugin({
       apply: (scope) => {
+        scope.on('tools/result', (exec, result) => {
+          this.sessionMemories
+            .get(agent)
+            ?.store.settle(exec.callId, Boolean(result.isError), !exec.parent);
+          return undefined;
+        });
         scope.systemPrompt.section({ name: 'stash', order: 100, text: INSTRUCTIONS });
         scope.tools.register({
           ...VIEW_TOOL,
@@ -217,11 +235,25 @@ export class MemoryAdapter {
             schema: { type: 'string' },
             render: (_args, value) => [{ type: 'text', text: String(value) }],
           },
-          execute: async (args) =>
+          execute: async (args, exec) =>
             this.boundary(async () => {
               const input = viewSchema.parse(args);
               const memory = await this.memory(agent);
-              if (historyTarget(input.path, agent.id)) {
+              const target = sessionMemoryTarget(input.path, agent.id);
+              if (target?.writable) {
+                if (
+                  input.query !== undefined ||
+                  input.since !== undefined ||
+                  input.until !== undefined ||
+                  input.detail !== undefined ||
+                  input.all !== undefined
+                )
+                  throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径');
+                const session = await this.sessionMemory(agent);
+                session.store.begin(exec.rootCallId);
+                return session.memory.view(target.path, input.cursor, input.path);
+              }
+              if (target || historyTarget(input.path, agent.id)) {
                 let browser = this.browsers.get(agent);
                 if (!browser) {
                   browser = new HistoryBrowser(
@@ -254,6 +286,7 @@ export class MemoryAdapter {
               properties: {
                 text: { type: 'string' },
                 stash: { type: 'object', additionalProperties: true },
+                stashCommit: { type: 'object', additionalProperties: true },
               },
               required: ['text', 'stash'],
               additionalProperties: false,
@@ -266,28 +299,51 @@ export class MemoryAdapter {
           execute: async (args, exec) =>
             this.boundary(async () => {
               exec.signal.throwIfAborted();
-              if (!memoryPolicy.writable(agent.session.header.origin === 'subagent'))
+              if (
+                !memoryPolicy.writable(
+                  agent.session.header.origin === 'subagent',
+                  this.config.subagentWrite,
+                )
+              )
                 throw new StashError('STASH_UNSUPPORTED', '子代理只读');
               const input = parseWriteInput(args);
               const memory = await this.memory(agent);
               const believed = foldResident(visibleRecords(agent), memory.workspaceId);
-              const result = await memory.write(input, exec.rootCallId, believed?.rules ?? null);
+              const target = sessionMemoryTarget(input.path, agent.id);
+              if (target && !target.writable)
+                throw new StashError('STASH_UNSUPPORTED', '其他会话只读');
+              const session = await this.sessionMemory(agent);
+              session.store.begin(exec.rootCallId);
+              const result = target
+                ? await session.memory.write(
+                    { ...input, path: target.path },
+                    exec.callId,
+                    believed?.session?.rules ?? null,
+                  )
+                : await memory.write(input, exec.callId, believed?.rules ?? null);
+              const text = target ? sessionWriteResult(result.text, target.path) : result.text;
+              const state = target
+                ? await this.actual(agent, await memory.actual())
+                : await this.actual(agent, result.state);
               const stash: ResidentRecord = {
                 v: 1,
                 workspaceId: memory.workspaceId,
                 kind: 'write',
-                state: result.state,
+                scope: target ? 'session' : 'workspace',
+                state,
                 // 嵌套调用的参数未必进入模型可见结果，按保守补发处理。
                 trusted: result.trusted && !exec.parent,
               };
-              if (exec.parent)
+              const commit = target ? session.store.lastCommit() : undefined;
+              if (exec.parent && commit) exec.deferContext(commitMessage(commit, text));
+              if (exec.parent && !commit)
                 exec.deferContext(
                   createUserMessage({
-                    content: [{ type: 'text', text: result.text }],
+                    content: [{ type: 'text', text }],
                     source: { kind: 'stash-memory', form: 'instructions', stash },
                   }),
                 );
-              return { text: result.text, stash };
+              return { text, stash, ...(commit ? { stashCommit: commit } : {}) };
             }),
         });
       },
@@ -333,6 +389,7 @@ export class MemoryAdapter {
         const workspace =
           registry.list().find((w) => w.sessionIds.includes(agent.id)) ??
           (await registry.create(cwd));
+        await workspace.attachSession(agent.id);
         await this.store.ensure({
           format: 1,
           id: workspace.id,
@@ -347,6 +404,44 @@ export class MemoryAdapter {
     return pending;
   }
 
+  async sessionMemory(agent: Agent) {
+    let value = this.sessionMemories.get(agent);
+    if (!value) {
+      const projection = await this.sessionProjection;
+      const store = new SessionMemoryStore(agent.session, () => projection.stateOf(agent.session));
+      value = {
+        store,
+        memory: new WorkspaceMemory(store, agent.id, agent.id, this.meter, this.config, '.'),
+      };
+      this.sessionMemories.set(agent, value);
+    }
+    return value;
+  }
+
+  async actual(agent: Agent, workspace: ResidentState): Promise<ResidentState> {
+    const session = await this.sessionMemory(agent);
+    const state = await session.memory.actual();
+    let parentRules: string | undefined;
+    if (agent.session.header.origin === 'subagent' && agent.session.header.parentSession) {
+      const id = agent.session.header.parentSession;
+      const parent = await (await this.history).memorySnapshot(id);
+      parentRules = expandRules(parent.files);
+      this.parents.set(agent, { id, beforeSeq: parent.beforeSeq });
+    }
+    return {
+      ...workspace,
+      session: {
+        ...state,
+        id: agent.id,
+        ...(parentRules === undefined ? {} : { parentRules }),
+        readOnly: !memoryPolicy.writable(
+          agent.session.header.origin === 'subagent',
+          this.config.subagentWrite,
+        ),
+      },
+    };
+  }
+
   async command(
     agent: Agent,
     raw: string,
@@ -356,7 +451,7 @@ export class MemoryAdapter {
     if (args[0] === 'status') {
       if (args.length !== 1) return null;
       const memory = await this.memory(agent);
-      const state = await memory.actual();
+      const state = await this.actual(agent, await memory.actual());
       return {
         kind: 'success',
         text:
@@ -373,7 +468,19 @@ export class MemoryAdapter {
           '/' +
           this.config.indexBudgetTokens +
           ' tokens；折叠：' +
-          state.folded,
+          state.folded +
+          '\n会话：' +
+          agent.id +
+          '\n会话规则：' +
+          this.meter.estimate(state.session?.rules ?? '') +
+          '/' +
+          this.config.rulesBudgetTokens +
+          ' tokens\n会话索引：' +
+          this.meter.estimate(state.session?.index ?? '') +
+          '/' +
+          this.config.indexBudgetTokens +
+          ' tokens\n可写：' +
+          !state.session?.readOnly,
       };
     }
     if (args[0] === 'explain') {
@@ -388,23 +495,15 @@ export class MemoryAdapter {
     }
     if (args.length !== 1) return { kind: 'error', text: '用法：/stash context | render' };
     const memory = await this.memory(agent);
-    const actual = await memory.actual();
-    const rendered = fullContext(
-      memory.workspaceId,
-      actual.rules,
-      actual.index,
-      actual.folded,
-      compactionRange(agent),
-    );
+    const actual = await this.actual(agent, await memory.actual());
+    const rendered = renderResident(memory.workspaceId, actual, compactionRange(agent));
     if (args[0] === 'render') return { kind: 'success', text: rendered };
     const believed = foldResident(visibleRecords(agent), memory.workspaceId);
     return {
       kind: 'success',
       text:
         '可见版本：\n' +
-        (believed
-          ? fullContext(memory.workspaceId, believed.rules, believed.index, believed.folded)
-          : '无') +
+        (believed ? renderResident(memory.workspaceId, believed) : '无') +
         '\n实际版本（' +
         this.meter.estimate(rendered) +
         ' tokens）：\n' +

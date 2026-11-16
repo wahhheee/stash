@@ -21,22 +21,30 @@ import type { FileMemoryStore } from '../adapters/memory-store.ts';
 import { digest } from '../adapters/memory-store.ts';
 import { containsSecret } from '../adapters/redaction.ts';
 
+export type MemoryBackend = Pick<FileMemoryStore, 'observe' | 'snapshot' | 'read' | 'transact'>;
+
 /** 读取凭据只存在于当前 agent；完整连续读完才允许覆盖。 */
 export class WorkspaceMemory {
   private readonly reads = new Map<string, string>();
   private readonly cursors = new Map<string, { path: string; revision: string; offset: number }>();
 
   constructor(
-    readonly store: FileMemoryStore,
+    readonly store: MemoryBackend,
     readonly workspaceId: string,
     readonly sessionId: string,
     readonly meter: TokenEstimator,
     readonly config: MemoryBudgets,
+    readonly indexPrefix = '',
   ) {}
 
   async observe(): Promise<{ state: ResidentState; journalId: string | null }> {
     const observed = await this.store.observe(this.workspaceId);
-    const state = composeResident(observed.files, this.meter, this.config.indexBudgetTokens);
+    const state = composeResident(
+      observed.files,
+      this.meter,
+      this.config.indexBudgetTokens,
+      this.indexPrefix,
+    );
     const used = this.meter.estimate(state.rules);
     if (used > this.config.rulesBudgetTokens)
       throw new StashError(
@@ -50,7 +58,7 @@ export class WorkspaceMemory {
     return (await this.observe()).state;
   }
 
-  async view(path: string, cursor?: string): Promise<string> {
+  async view(path: string, cursor?: string, displayPath = path): Promise<string> {
     memoryPath(path);
     let text: string;
     let file = false;
@@ -61,7 +69,7 @@ export class WorkspaceMemory {
         .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
         .map(
           ([p, content]) =>
-            p +
+            (displayPath.startsWith('./') ? '.' + p : p) +
             (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
         )
         .join('\n');
@@ -82,7 +90,7 @@ export class WorkspaceMemory {
     } else this.reads.delete(path);
     let end = text.length;
     const fits = (n: number) =>
-      this.meter.estimate(viewResult(path, text.slice(offset, n), revision + ':' + n)) <=
+      this.meter.estimate(viewResult(displayPath, text.slice(offset, n), revision + ':' + n)) <=
       this.config.viewBudgetTokens;
     if (!fits(end)) {
       let low = offset,
@@ -98,10 +106,10 @@ export class WorkspaceMemory {
     if (end < text.length) {
       const next = revision + ':' + end;
       this.cursors.set(next, { path, revision, offset: end });
-      return viewResult(path, text.slice(offset, end), next);
+      return viewResult(displayPath, text.slice(offset, end), next);
     }
     if (file) this.reads.set(path, revision);
-    return viewResult(path, text.slice(offset));
+    return viewResult(displayPath, text.slice(offset));
   }
 
   async write(
@@ -177,7 +185,12 @@ export class WorkspaceMemory {
         }
         if (content === null) files.delete(path);
         else files.set(path, content);
-        const state = composeResident(files, this.meter, this.config.indexBudgetTokens);
+        const state = composeResident(
+          files,
+          this.meter,
+          this.config.indexBudgetTokens,
+          this.indexPrefix,
+        );
         const used = this.meter.estimate(state.rules);
         if (used > this.config.rulesBudgetTokens)
           throw new StashError(

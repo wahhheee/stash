@@ -67,7 +67,7 @@ export async function createHarnessFixture(): Promise<{
   cwd: string;
   env: NodeJS.ProcessEnv;
   cli: (...args: string[]) => Promise<string>;
-  sdk: (baseURL: string, workspace?: string) => DeepSeekHarness;
+  sdk: (baseURL: string, workspace?: string, patches?: string[]) => DeepSeekHarness;
   close: () => Promise<void>;
 }> {
   const root = await mkdtemp(join(tmpdir(), 'stash-e2e-'));
@@ -88,14 +88,14 @@ export async function createHarnessFixture(): Promise<{
     cwd,
     env,
     cli,
-    sdk: (baseURL, workspace = cwd) =>
+    sdk: (baseURL, workspace = cwd, patches = []) =>
       new DeepSeekHarness({
         dshBin,
         dshHome: home,
         profile: 'test',
         cwd: workspace,
         processCwd: workspace,
-        patches: [patch],
+        patches: [patch, ...patches],
         env: { ...env, DEEPSEEK_BASE_URL: baseURL },
         initializeTimeoutMs: 30000,
         requestTimeoutMs: 30000,

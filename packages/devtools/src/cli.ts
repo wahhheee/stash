@@ -1,3 +1,4 @@
+import { foldLog } from './fold.ts';
 import { resolve, dirname, basename } from 'node:path';
 import { inspectRoot, readReport } from '../../plugin/src/adapters/diagnostics.ts';
 import { FileMemoryStore } from '../../plugin/src/adapters/memory-store.ts';
@@ -11,10 +12,17 @@ import { viewHistory } from './history.ts';
 const [command, target, ...extra] = process.argv.slice(2);
 
 const usage =
-  '用法：pnpm devtools verify <记忆根目录或报告包> | render <工作区目录> | view <工作区目录> <记忆路径> [<宿主 sessions 目录> <当前会话 ID> [查询选项 JSON]] | journal <工作区目录> | reconcile <工作区目录> <宿主 sessions 目录> <会话 ID>';
+  '用法：pnpm devtools verify <记忆根目录或报告包> | render <工作区目录> | view <工作区目录> <记忆路径> [<宿主 sessions 目录> <当前会话 ID> [查询选项 JSON]] | fold <宿主 sessions 目录> <会话 ID> | journal <工作区目录> | reconcile <工作区目录> <宿主 sessions 目录> <会话 ID>';
 
 try {
-  const arity: Record<string, number> = { verify: 0, render: 0, view: 1, journal: 0, reconcile: 2 };
+  const arity: Record<string, number> = {
+    fold: 1,
+    verify: 0,
+    render: 0,
+    view: 1,
+    journal: 0,
+    reconcile: 2,
+  };
   if (
     !command ||
     !target ||
@@ -22,6 +30,8 @@ try {
   ) {
     console.error(usage);
     process.exitCode = 2;
+  } else if (command === 'fold') {
+    for (const step of await foldLog(resolve(target), extra[0]!)) console.log(JSON.stringify(step));
   } else if (command === 'verify') {
     const checks = target.endsWith('.json.gz')
       ? (await readReport(target)).checks

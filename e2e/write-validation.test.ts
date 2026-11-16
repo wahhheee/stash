@@ -68,7 +68,9 @@ it('真实 SDK 删除误传 content 后给出正确提示，省略后重试成�
     expect(response).not.toContain('Edit requires exactly');
     expect(await readFile(note, 'utf8')).toBe(content);
     expect(await readFile(join(dir, '.journal.jsonl'), 'utf8')).toBe(journal);
-    await call('memory_write', { path, op: 'delete' });
+    expect(await call('memory_write', { path, op: 'delete' })).toContain(
+      'Deleted /notes/test.md (workspace)',
+    );
     await expect(readFile(note, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await readFile(join(dir, '.journal.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(
       2,

@@ -104,7 +104,37 @@ for (const mode of ['standard', 'ptc'])
           ).at(-1),
         ),
       ).toContain('promote a copy');
+      const duplicate = JSON.stringify(
+        (
+          await invoke(sourceId, 'memory_write', {
+            path: './notes/experiment.md',
+            op: 'create',
+            content: note + '不应覆盖',
+          })
+        ).at(-1),
+      );
+      expect(duplicate).toContain('STASH_ALREADY_EXISTS');
+      expect(duplicate).toContain('choose an appropriate update operation');
+      const readOnly = JSON.stringify(
+        (
+          await invoke(sourceId, 'memory_write', {
+            path: '../other/notes/experiment.md',
+            op: 'create',
+            content: note,
+          })
+        ).at(-1),
+      );
+      expect(readOnly).toContain('STASH_READ_ONLY');
+      expect(readOnly).toContain('Other-session memory is read-only');
+      expect(readOnly).not.toContain(
+        'Use workspace or current-session rules/notes; sibling memory',
+      );
       await host.close();
+      expect(
+        (await foldLog(join(fixture.home, 'sessions'), sourceId)).at(-1)?.files[
+          '/notes/experiment.md'
+        ]?.content,
+      ).toBe(note);
       expect(
         (await foldLog(join(fixture.home, 'sessions'), sourceId)).at(-1)?.files['/RULES.md']
           ?.content,

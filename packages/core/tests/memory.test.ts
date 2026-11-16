@@ -12,7 +12,6 @@ import {
   GUIDE,
   toolError,
   StashError,
-  validationDetail,
 } from '../src/index.ts';
 
 const meter = { estimate: (text: string) => Math.ceil(text.length / 4) };
@@ -81,7 +80,7 @@ it('笔记格式诊断区分 YAML 和字段错误，不回显解析器输入', (
       expect(error).toBeInstanceOf(StashError);
       const typed = error as StashError;
       expect(typed.code).toBe('STASH_INVALID_DATA');
-      const message = toolError(typed.code, validationDetail(typed.detail!));
+      const message = toolError(typed.code, typed.detail);
       expect(message).toContain(expected);
       expect(message).not.toContain('不应回显');
       expect(message).not.toContain('Edit requires');

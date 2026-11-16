@@ -15,7 +15,7 @@ import { FileMemoryStore, memoryFile } from '../src/adapters/memory-store.ts';
 import { WorkspaceMemory } from '../src/host/memory.ts';
 import type * as Fs from 'node:fs/promises';
 import { residentSchema } from '../src/adapters/memory-records.ts';
-import { StashError, validationDetail } from '@wahhheee/stash-core';
+import { StashError, toolError } from '@wahhheee/stash-core';
 
 const roots: string[] = [];
 
@@ -63,7 +63,8 @@ it('编辑无匹配、多处匹配和笔记格式错误分别说明原因且不�
       throw new Error('预期失败');
     } catch (error) {
       expect(error).toBeInstanceOf(StashError);
-      expect(validationDetail((error as StashError).detail!)).toContain(expected);
+      const typed = error as StashError;
+      expect(toolError(typed.code, typed.detail)).toContain(expected);
     }
   }
   await expect(
@@ -112,6 +113,52 @@ it('并入笔记的写入也检查规则预算，失败不改变文件或日志'
   ).rejects.toMatchObject({ code: 'STASH_BUDGET_EXCEEDED' });
   expect((await store.read('w', '/notes/a.md'))?.content).toBe(text);
   expect(await store.journal('w')).toHaveLength(2);
+});
+
+it('读取与规则预算分别给出补救方式，规则引用仍计入预算', async () => {
+  const { a, store } = await fixture();
+  await a.write({ path: '/RULES.md', op: 'create', content: '原规则' }, '1');
+  const limited = new WorkspaceMemory(store, 'w', 'limited', meter, {
+    ...config,
+    viewBudgetTokens: 1,
+  });
+  const cases = [
+    [() => limited.view('/RULES.md'), 'viewBudgetTokens'],
+    [
+      () => a.write({ path: '/RULES.md', op: 'append', content: '长'.repeat(7000) }, '2'),
+      'only if that text is no longer imported into rules',
+    ],
+  ] as const;
+  for (const [run, expected] of cases) {
+    try {
+      await run();
+      throw new Error('预期预算失败');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StashError);
+      const typed = error as StashError;
+      expect(toolError(typed.code, typed.detail)).toContain(expected);
+    }
+  }
+  expect((await store.read('w', '/RULES.md'))?.content).toBe('原规则');
+  expect(await store.journal('w')).toHaveLength(1);
+});
+
+it('归档笔记保留既有规则引用，回执不把退出索引说成停用规则', async () => {
+  const { a } = await fixture();
+  await a.write(
+    {
+      path: '/notes/rule.md',
+      op: 'create',
+      content: '---\ntype: rule\ndescription: 条件规则\n---\n有条件时执行',
+    },
+    '1',
+  );
+  await a.write({ path: '/RULES.md', op: 'create', content: '@notes/rule.md' }, '2');
+  await a.view('/notes/rule.md');
+  const result = await a.write({ path: '/notes/rule.md', op: 'archive' }, '3');
+  expect(result.text).toContain('existing rules imports remain active');
+  expect(result.state.rules).toBe('有条件时执行');
+  expect(result.state.index).toBe('');
 });
 
 it('续读完整性、删除行、凭据与未来格式拒绝', async () => {

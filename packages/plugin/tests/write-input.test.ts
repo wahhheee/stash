@@ -1,13 +1,12 @@
 import { expect, it } from 'vitest';
-import { StashError, toolError, validationDetail } from '@wahhheee/stash-core';
+import { StashError, toolError } from '@wahhheee/stash-core';
 import { parseWriteInput } from '../src/adapters/write-input.ts';
 
 function failure(input: unknown): string {
   try {
     parseWriteInput(input);
   } catch (error) {
-    if (error instanceof StashError && error.detail)
-      return toolError(error.code, validationDetail(error.detail));
+    if (error instanceof StashError && error.detail) return toolError(error.code, error.detail);
     throw error;
   }
   throw new Error('预期校验失败');

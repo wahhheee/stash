@@ -42,7 +42,7 @@ declare module '@deepseek-ai/dsh-llm' {
 export function validateCommit(value: unknown): MemoryCommit {
   const commit = commitSchema.parse(value);
   if ((commit.content === null ? null : digest(commit.content)) !== commit.revision)
-    throw new StashError('STASH_INVALID_DATA', '会话提交哈希错误');
+    throw new StashError('STASH_INVALID_DATA', '会话提交哈希错误', { kind: 'session-commit' });
   if (commit.content !== null && containsSecret(commit.content))
     throw new StashError('STASH_SECRET', '会话提交包含凭据');
   return commit;
@@ -150,18 +150,20 @@ export class SessionMemoryStore implements MemoryBackend {
     expected: string | null | undefined,
     _actor: string,
     call: string,
-    _op: string,
+    op: string,
     transform: (files: Map<string, string>) => { content: string | null; value: T },
   ): Promise<T> {
     const state = this.state();
     const before = state.files[path]?.revision ?? null;
+    if (expected === null && before !== null && op === 'create')
+      throw new StashError('STASH_ALREADY_EXISTS', '会话文件已存在');
     if (expected !== undefined && before !== expected)
       throw new StashError('STASH_STALE_READ', '会话文件已变化');
     if (Object.keys(state.files).some((p) => p !== path && p.toLowerCase() === path.toLowerCase()))
-      throw new StashError('STASH_INVALID_DATA', '路径大小写冲突');
+      throw new StashError('STASH_INVALID_DATA', '路径大小写冲突', { kind: 'path-case' });
     const result = transform(commitFiles(state));
     if (result.content !== null && Buffer.byteLength(result.content) > 32 * 1024 * 1024)
-      throw new StashError('STASH_INVALID_DATA', '会话文件超过 32 MiB');
+      throw new StashError('STASH_INVALID_DATA', '会话文件超过 32 MiB', { kind: 'file-size' });
     const commit = validateCommit({
       v: 1,
       id: randomUUID(),

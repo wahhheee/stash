@@ -15,7 +15,7 @@ import { Context } from '@deepseek-ai/cordis';
 import Sessions, { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session';
 import Projections from '@deepseek-ai/dsh-session-projection';
 import { expect, it } from 'vitest';
-import { emptyCommits, commitFiles } from '@wahhheee/stash-core';
+import { emptyCommits, commitFiles, renderResident } from '@wahhheee/stash-core';
 import {
   SessionMemoryStore,
   sessionMemoryProjection,
@@ -187,27 +187,53 @@ for (const subagentWrite of [false, true])
         expect(
           (await adapter.actual(child, { rules: '', index: '', folded: false })).session,
         ).toMatchObject({ parentRules: '父会话规则', readOnly: !subagentWrite });
-        const batch = await ctx.tools.execute({
-          agent: child,
-          signal: new AbortController().signal,
-          calls: [
-            {
-              type: 'tool-call',
-              id: ToolCallId('write-child'),
-              name: 'memory_write',
-              arguments: JSON.stringify({
-                path: './RULES.md',
-                op: 'create',
-                content: '子代理规则',
-              }),
-            },
-          ],
-        });
-        const result = batch.results[0]!.result;
-        expect(Boolean(result.isError)).toBe(!subagentWrite);
-        expect(JSON.stringify(result.content)).toContain(
-          subagentWrite ? 'Wrote ./RULES.md' : 'STASH_UNSUPPORTED',
+        const workspace = await adapter.memory(child);
+        const session = await adapter.sessionMemory(child);
+        const state = await adapter.actual(child, await workspace.actual());
+        const context = renderResident(workspace.workspaceId, state);
+        expect(context.includes('cannot write either workspace or session memory')).toBe(
+          !subagentWrite,
         );
+        const beforeWorkspace = await workspace.store.snapshot(workspace.workspaceId);
+        const beforeSession = session.store.state();
+        for (const [index, path] of ['/RULES.md', './RULES.md'].entries()) {
+          const batch = await ctx.tools.execute({
+            agent: child,
+            signal: new AbortController().signal,
+            log: { turn: 1, step: index + 1 },
+            calls: [
+              {
+                type: 'tool-call',
+                id: ToolCallId('write-child-' + index),
+                name: 'memory_write',
+                arguments: JSON.stringify({ path, op: 'create', content: '子代理规则' }),
+              },
+            ],
+          });
+          const result = batch.results[0]!.result;
+          const text = JSON.stringify(result.content);
+          expect(Boolean(result.isError)).toBe(!subagentWrite);
+          if (subagentWrite) expect(text).toContain('Wrote ' + path);
+          else {
+            expect(text).toContain('STASH_READ_ONLY');
+            expect(text).toContain(
+              'This subagent cannot write workspace or session memory under the current policy.',
+            );
+            expect(text).toContain('No changes were made.');
+            expect(text).toContain('parent agent for consideration');
+            expect(text).not.toContain('Use workspace or current-session');
+          }
+        }
+        if (subagentWrite) {
+          expect((await workspace.store.read(workspace.workspaceId, '/RULES.md'))?.content).toBe(
+            '子代理规则',
+          );
+          expect(commitFiles(session.store.state()).get('/RULES.md')).toBe('子代理规则');
+        } else {
+          expect(await workspace.store.snapshot(workspace.workspaceId)).toEqual(beforeWorkspace);
+          expect(session.store.state()).toEqual(beforeSession);
+          expect(await adapter.store.journal(workspace.workspaceId)).toHaveLength(0);
+        }
       } finally {
         await handle.dispose();
       }

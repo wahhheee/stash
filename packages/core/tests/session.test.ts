@@ -96,7 +96,9 @@ it('分叉只追加位置通知，延后工作区更新不能被通知确认，�
     ).reason,
   ).toBe('session-rules-changed');
   expect(renderResident('workspace', after)).toMatchSnapshot();
-  expect(sessionWriteResult('Wrote /notes/a.md (workspace).', '/notes/a.md')).toContain('promote');
+  expect(sessionWriteResult('Wrote /notes/a.md (workspace).', '/notes/a.md', 'create')).toContain(
+    'promote',
+  );
 });
 
 it('一次工作区写入不能确认未展示的会话规则', () => {

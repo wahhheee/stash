@@ -1,8 +1,10 @@
 export * from './session.ts';
+export * from './errors.ts';
 import { SESSION_INSTRUCTIONS, SESSION_GUIDE, sessionContext } from './session.ts';
 import { HISTORY_GUIDE, HISTORY_INSTRUCTIONS } from './history.ts';
 import type { ResidentState } from '../resident.ts';
 import { WRITE_OPERATIONS } from '../write.ts';
+import type { WriteOperation } from '../write.ts';
 import { WRITE_OPERATION_GUIDE } from './validation.ts';
 
 /** 全部模型可见的固定文字与工具 schema。 */
@@ -19,7 +21,7 @@ export const GUIDE =
 export const VIEW_TOOL = {
   name: 'memory_view',
   description:
-    'Read workspace/session rules, notes, history paths, dsh references or /.guide.md. History supports literal query, since/until, brief/full detail and pagination. Continue with the returned cursor until complete before editing.',
+    'Read workspace/session rules, notes, history paths, dsh references or /.guide.md. Rules and notes accept only path and cursor. History supports literal query, since/until, brief/full detail and pagination. Continue with unchanged arguments and each returned cursor until complete before editing.',
   parameters: {
     type: 'object',
     properties: {
@@ -42,7 +44,7 @@ export const VIEW_TOOL = {
 export const WRITE_TOOL = {
   name: 'memory_write',
   description:
-    'Manage workspace or current-session rules and notes. Read the complete current file before edit, replace, archive or delete. create fails if the file exists; replace rewrites it; delete removes a note. Use only the fields listed for the selected op. Rules have a token budget; credentials are rejected.',
+    'Manage workspace or current-session rules and notes when the current agent has write permission. Read the complete current file before edit, replace, archive or delete. create fails if the file exists; append adds content to an existing file; replace rewrites it. archive retains a note but excludes it from future indexes; existing rules imports remain active. delete removes a note. Rules cannot be archived or deleted; to clear them, read fully then replace with empty content. Use only the fields listed for the selected op. Rules have a token budget; credentials are rejected.',
   parameters: {
     type: 'object',
     properties: {
@@ -169,43 +171,28 @@ export function viewResult(path: string, text: string, cursor?: string): string 
   );
 }
 
-export function writeResult(path: string, used: number, limit: number, removed: string[]): string {
+export function writeResult(
+  path: string,
+  used: number,
+  limit: number,
+  removed: string[],
+  operation: WriteOperation,
+): string {
   return (
-    'Wrote ' +
+    (operation === 'delete' ? 'Deleted ' : operation === 'archive' ? 'Archived ' : 'Wrote ') +
     path +
     ' (workspace). Rules budget ' +
     used +
     '/' +
     limit +
     ' tokens.' +
+    (operation === 'archive'
+      ? ' The note is retained with status: archived and excluded from future note indexes; existing rules imports remain active.'
+      : '') +
     (removed.length ? '\nRemoved lines:\n' + removed.join('\n') : '')
   );
 }
 
 export function budgetDetail(used: number, limit: number): string {
   return 'Rules budget ' + used + '/' + limit + ' tokens.';
-}
-
-export function toolError(code: string, detail?: string): string {
-  const reasons: Record<string, string> = {
-    STASH_STALE_READ: 'Read the complete current file again before changing it.',
-    STASH_UNSUPPORTED:
-      'Use workspace or current-session rules/notes; sibling memory and history are read-only.',
-    STASH_AMBIGUOUS_REF: 'Use a longer or full session ID. Candidates:',
-    STASH_SCOPE_REQUIRED:
-      'Narrow search to a session or since/until window; all: true explicitly scans the workspace.',
-    STASH_HISTORY_UNREADABLE:
-      'The target history is unavailable or corrupt. No empty result was substituted.',
-    STASH_SEARCH_FAILED:
-      'Search could not read the whole scope. Retry or narrow the scope; this is not a no-match result.',
-    STASH_INVALID_DATA:
-      'Invalid input or memory data. Check the supplied arguments and memory format.',
-    STASH_NOT_FOUND: 'The requested file or imported note does not exist.',
-    STASH_BUDGET_EXCEEDED: 'Shorten the rules or move non-instruction content into notes.',
-    STASH_SECRET: 'Remove credentials before storing memory.',
-    STASH_LOCKED: 'Workspace memory is busy or has an abandoned lock. Retry or run /stash doctor.',
-    STASH_IO_ERROR: 'Memory storage is unavailable. Run /stash doctor.',
-  };
-  if (code === 'STASH_INVALID_DATA' && detail) return code + ': ' + detail;
-  return code + ': ' + (reasons[code] ?? reasons.STASH_IO_ERROR) + (detail ? ' ' + detail : '');
 }

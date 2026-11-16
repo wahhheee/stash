@@ -36,6 +36,8 @@ memory_write 支持 create、append、edit、replace、archive、delete。create
 
 六种操作共用 path 和 op；create、append、replace 必须提供字符串 content，edit 必须提供非空 old 和字符串 new，new 为空字符串表示删除匹配文本。archive、delete 只接受 path 和 op；其余正文参数必须省略，空字符串和 null 均不等于省略。操作字段表同时生成工具说明、输入类型和适配器校验规则。STASH_INVALID_DATA 按参数缺失、类型、多余字段、编辑零匹配或多匹配、笔记 frontmatter 格式给出具体修正提示，不回显输入正文和底层异常。
 
+工具错误采用错误码加结构化原因，在 core/templates 中生成完整说明。STASH_READ_ONLY 区分当前子代理无写权限、其他会话记忆只读和历史只读；STASH_ALREADY_EXISTS 表示 create 目标已存在，读取后需选择更新操作或另一个路径。STASH_STALE_READ 按写前版本、续读游标和 pending 恢复冲突分别提示；读取预算与规则预算分别说明。模型可见错误不直接拼接底层异常正文。归档回执说明文件仍保留、后续索引排除且既有规则引用仍生效；删除回执明确目标已删除，两者不附加笔记提升提示。
+
 ## 常驻上下文
 
 静态说明和两个工具按 agent 作用域注册，与具体工作区和会话无关。agent/pre-step 在宿主放行请求后读取当前记忆，按 session.surface 的可见顺序折叠完整快照、规则增量与仍可见的成功写入结果。来源类型 stash-memory，元数据 stash.v 为 1，存储所表达的结构化状态。
@@ -57,6 +59,8 @@ stashSessionMemory 是 stateVersion: 1 的宿主投影，按原始事件顺序�
 同一次根调用中的嵌套读写可观察尚待外层结算的提交。最终工具失败撤销对应的待提交项，根调用结算或新请求清空暂存；持久状态只从最终日志重建。外层调用失败时是否已写入，以宿主最终留下的提交通知为准；不存在插件私有的成功副本。写入沿用工作区的六种操作、完整读取资格、旧版本检查、frontmatter、规则预算与凭据校验，单次结果文件上限 32 MiB。
 
 ./RULES.md、./notes/ 和 ./ 是当前会话。../<id>/、/sessions/<id>/RULES.md、/sessions/<id>/notes/ 只读同工作区会话；完整 dsh://session/<id>/RULES.md 或 /notes/<name>.md 引用可跨工作区只读。其他会话的内容用 reference-only 包装，不授予本会话写入资格或成为常驻规则。
+
+跨会话目录条目使用包含完整会话 ID 的 dsh:// 引用，可直接作为下一次读取路径。笔记写入回执说明会话作用域与显式检索能力，索引显示仍受 index/status 元数据及刷新时机影响；笔记搜索结果明确是所选会话的当前存储版本，而非时间窗内的历史快照。
 
 常驻快照含工作区规则及索引、会话位置、会话规则及索引。工作区和会话层分别使用 rulesBudgetTokens、indexBudgetTokens。优先级为用户直接指令、仓库指令、会话规则、工作区规则。会话笔记索引只列本会话折叠结果，索引变化仍延迟到完整快照刷新。自身成功写入只确认对应层；PTC 记录保守补发会话规则。
 

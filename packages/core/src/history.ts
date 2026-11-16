@@ -56,15 +56,15 @@ export function timeWindow(since?: string, until?: string): { from: number; to: 
       ) ||
       !Number.isFinite(Date.parse(value))
     )
-      throw new StashError('STASH_INVALID_DATA', '时间必须带时区');
+      throw new StashError('STASH_INVALID_DATA', '时间必须带时区', { kind: 'time-format' });
     const day = value.slice(0, 10);
     if (new Date(day + 'T00:00:00Z').toISOString().slice(0, 10) !== day)
-      throw new StashError('STASH_INVALID_DATA', '无效日历日期');
+      throw new StashError('STASH_INVALID_DATA', '无效日历日期', { kind: 'time-format' });
     return Date.parse(value);
   };
   const from = parse(since, -Infinity),
     to = parse(until, Infinity);
-  if (from > to) throw new StashError('STASH_INVALID_DATA', '时间范围颠倒');
+  if (from > to) throw new StashError('STASH_INVALID_DATA', '时间范围颠倒', { kind: 'time-order' });
   return { from, to };
 }
 

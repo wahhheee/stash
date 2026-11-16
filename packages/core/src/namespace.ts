@@ -26,13 +26,16 @@ export function sessionMemoryTarget(
 /** 只接受作用域内部的规范路径；工作区路径可跨平台原样落盘。 */
 export function memoryPath(path: string, writable = false): string {
   if (path.startsWith('./') || path.startsWith('../') || path.startsWith('/sessions'))
-    throw new StashError('STASH_UNSUPPORTED', '会话路径须先解析作用域');
+    throw new StashError('STASH_UNSUPPORTED', '会话路径须先解析作用域', {
+      kind: 'memory-path',
+      writable,
+    });
   if (
     !path.startsWith('/') ||
     /[\\:%]/u.test(path) ||
     [...path].some((char) => char.charCodeAt(0) < 32)
   )
-    throw new StashError('STASH_INVALID_DATA', '无效路径');
+    throw new StashError('STASH_INVALID_DATA', '无效路径', { kind: 'invalid-path' });
   if (!writable && ['/', '/notes', '/notes/', '/.guide.md'].includes(path)) return path;
   const parts = path.slice(1).replace(/\/$/u, '').split('/');
   if (
@@ -46,7 +49,7 @@ export function memoryPath(path: string, writable = false): string {
         /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/iu.test(p),
     )
   )
-    throw new StashError('STASH_INVALID_DATA', '无效路径');
+    throw new StashError('STASH_INVALID_DATA', '无效路径', { kind: 'invalid-path' });
   if (path === '/RULES.md') return path;
   if (
     parts[0] === 'notes' &&
@@ -54,5 +57,5 @@ export function memoryPath(path: string, writable = false): string {
     (path.endsWith('.md') || (!writable && path.endsWith('/')))
   )
     return path;
-  throw new StashError('STASH_UNSUPPORTED', '不支持此记忆路径');
+  throw new StashError('STASH_UNSUPPORTED', '不支持此记忆路径', { kind: 'memory-path', writable });
 }

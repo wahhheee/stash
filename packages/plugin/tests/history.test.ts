@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { HistoryBrowser } from '../src/host/history.ts';
+import { StashError, toolError } from '@wahhheee/stash-core';
 import type { HistoryEvent, HistoryPort, HistorySession } from '@wahhheee/stash-core';
 
 function fixture(budget = 4000) {
@@ -111,6 +112,48 @@ it('昨晚场景：清单、轮次、单事件扩展、精确窗口和压缩摘�
 function sessionRef(id: string, seq: number) {
   return 'dsh://session/' + id + '/' + seq;
 }
+
+it('跨会话目录给出可直接读取的完整引用，笔记搜索说明读取的是当前版本', async () => {
+  const { browser, sessions, b } = fixture();
+  const content = '---\ntype: lesson\ndescription: 新结论\n---\n当前笔记独有结论';
+  sessions.set(b, { ...sessions.get(b)!, memory: { '/notes/a.md': content } });
+  const listing = await browser.view({ path: '../' + b + '/notes/' });
+  const reference = 'dsh://session/' + b + '/notes/a.md';
+  expect(listing).toContain(reference);
+  expect(await browser.view({ path: reference })).toContain('当前笔记独有结论');
+  const result = await browser.view({
+    path: '/sessions',
+    query: '当前笔记独有结论',
+    since: '2026-11-14T00:00:00Z',
+    until: '2026-11-15T00:00:00Z',
+  });
+  expect(result).toContain('Search status: matched');
+  expect(result).toContain('latest stored content, not a historical snapshot');
+  expect(result).toContain(reference);
+  expect(result).not.toContain('No matches');
+});
+
+it('历史预算过小提示调整读取预算，歧义会话仍列出候选 ID', async () => {
+  for (const [request, browser, expected] of [
+    [{ path: './log' }, fixture(1).browser, 'viewBudgetTokens'],
+    [
+      { path: '/sessions/abcdefgh/log' },
+      fixture().browser,
+      'Candidates: session-abcdefgh-one, session-abcdefgh-two',
+    ],
+  ] as const) {
+    try {
+      await browser.view(request);
+      throw new Error('预期失败');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StashError);
+      const typed = error as StashError;
+      const text = toolError(typed.code, typed.detail);
+      expect(text).toContain(expected);
+      expect(text).not.toContain('Shorten the rules');
+    }
+  }
+});
 
 it('字面搜索限定范围、中文与空白匹配、前缀去重和零结果', async () => {
   const { browser } = fixture();

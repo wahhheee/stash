@@ -14,7 +14,6 @@ import {
   WRITE_TOOL,
   StashError,
   toolError,
-  validationDetail,
   foldResident,
   decideResident,
   renderResident,
@@ -248,7 +247,9 @@ export class MemoryAdapter {
                   input.detail !== undefined ||
                   input.all !== undefined
                 )
-                  throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径');
+                  throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径', {
+                    kind: 'history-options',
+                  });
                 const session = await this.sessionMemory(agent);
                 session.store.begin(exec.rootCallId);
                 return session.memory.view(target.path, input.cursor, input.path);
@@ -274,7 +275,9 @@ export class MemoryAdapter {
                 input.detail !== undefined ||
                 input.all !== undefined
               )
-                throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径');
+                throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径', {
+                  kind: 'history-options',
+                });
               return memory.view(input.path, input.cursor);
             }),
         });
@@ -305,13 +308,24 @@ export class MemoryAdapter {
                   this.config.subagentWrite,
                 )
               )
-                throw new StashError('STASH_UNSUPPORTED', '子代理只读');
+                throw new StashError('STASH_READ_ONLY', '子代理只读', {
+                  kind: 'read-only',
+                  reason: 'subagent',
+                });
               const input = parseWriteInput(args);
               const memory = await this.memory(agent);
               const believed = foldResident(visibleRecords(agent), memory.workspaceId);
               const target = sessionMemoryTarget(input.path, agent.id);
               if (target && !target.writable)
-                throw new StashError('STASH_UNSUPPORTED', '其他会话只读');
+                throw new StashError('STASH_READ_ONLY', '其他会话只读', {
+                  kind: 'read-only',
+                  reason: 'sibling',
+                });
+              if (!target && historyTarget(input.path, agent.id))
+                throw new StashError('STASH_READ_ONLY', '历史记录只读', {
+                  kind: 'read-only',
+                  reason: 'history',
+                });
               const session = await this.sessionMemory(agent);
               session.store.begin(exec.rootCallId);
               const result = target
@@ -321,7 +335,9 @@ export class MemoryAdapter {
                     believed?.session?.rules ?? null,
                   )
                 : await memory.write(input, exec.callId, believed?.rules ?? null);
-              const text = target ? sessionWriteResult(result.text, target.path) : result.text;
+              const text = target
+                ? sessionWriteResult(result.text, target.path, input.op)
+                : result.text;
               const state = target
                 ? await this.actual(agent, await memory.actual())
                 : await this.actual(agent, result.state);
@@ -363,16 +379,7 @@ export class MemoryAdapter {
             ? 'STASH_INVALID_DATA'
             : 'STASH_IO_ERROR';
       throw new HarnessError(
-        toolError(
-          code,
-          error instanceof StashError
-            ? error.detail
-              ? validationDetail(error.detail)
-              : ['STASH_BUDGET_EXCEEDED', 'STASH_AMBIGUOUS_REF'].includes(error.code)
-                ? error.message
-                : undefined
-            : undefined,
-        ),
+        toolError(code, error instanceof StashError ? error.detail : undefined),
         code,
       );
     }
@@ -383,9 +390,17 @@ export class MemoryAdapter {
     if (!pending) {
       pending = (async () => {
         const registry = this.ctx.get('workspaceRegistry');
-        if (!registry) throw new StashError('STASH_UNSUPPORTED', '宿主缺少 workspaceRegistry');
+        if (!registry)
+          throw new StashError('STASH_IO_ERROR', '宿主缺少 workspaceRegistry', {
+            kind: 'workspace-unavailable',
+            reason: 'registry',
+          });
         const cwd = agent.session.header.cwd;
-        if (!cwd) throw new StashError('STASH_UNSUPPORTED', '会话没有工作目录');
+        if (!cwd)
+          throw new StashError('STASH_IO_ERROR', '会话没有工作目录', {
+            kind: 'workspace-unavailable',
+            reason: 'cwd',
+          });
         const workspace =
           registry.list().find((w) => w.sessionIds.includes(agent.id)) ??
           (await registry.create(cwd));

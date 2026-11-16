@@ -1,4 +1,4 @@
-import type { StashErrorDetail } from '../errors.ts';
+import type { StashValidationDetail } from '../errors.ts';
 import { WRITE_OPERATIONS } from '../write.ts';
 
 export const WRITE_OPERATION_GUIDE = Object.entries(WRITE_OPERATIONS)
@@ -10,7 +10,7 @@ export const WRITE_OPERATION_GUIDE = Object.entries(WRITE_OPERATIONS)
   .join('\n');
 
 /** 只渲染已分类的原因和固定字段名，不回显输入正文或底层异常。 */
-export function validationDetail(detail: StashErrorDetail): string {
+export function validationDetail(detail: StashValidationDetail): string {
   switch (detail.kind) {
     case 'write-object':
       return 'memory_write requires an object with path and op. No changes were made.';

@@ -10,7 +10,7 @@ export interface HistoryTarget {
 
 export function sessionId(value: string): string {
   if (!/^[a-zA-Z0-9_-]{1,256}$/u.test(value))
-    throw new StashError('STASH_INVALID_DATA', '无效会话 ID');
+    throw new StashError('STASH_INVALID_DATA', '无效会话 ID', { kind: 'session-id' });
   return value;
 }
 
@@ -32,7 +32,7 @@ export function historyTarget(path: string, current: string): HistoryTarget | nu
       if (typeof id !== 'string') throw new Error();
       return { id: sessionId(id), explicit: true, view: 'turns' };
     } catch {
-      throw new StashError('STASH_INVALID_DATA', '无效会话引用');
+      throw new StashError('STASH_INVALID_DATA', '无效会话引用', { kind: 'session-reference' });
     }
   }
   let id: string,
@@ -40,7 +40,8 @@ export function historyTarget(path: string, current: string): HistoryTarget | nu
     explicit = false;
   if (path.startsWith('dsh://')) {
     const match = /^dsh:\/\/session\/([^/]+)(?:\/(.*))?$/u.exec(path);
-    if (!match) throw new StashError('STASH_INVALID_DATA', '无效会话引用');
+    if (!match)
+      throw new StashError('STASH_INVALID_DATA', '无效会话引用', { kind: 'session-reference' });
     id = sessionId(match[1]!);
     suffix = match[2] ?? 'turns';
     explicit = true;
@@ -49,7 +50,8 @@ export function historyTarget(path: string, current: string): HistoryTarget | nu
     suffix = path.slice(6) || 'turns';
   } else if (path.startsWith('/sessions/')) {
     const match = /^\/sessions\/([^/]+)(?:\/log(?:\/(.*))?)?$/u.exec(path);
-    if (!match) throw new StashError('STASH_INVALID_DATA', '无效历史路径');
+    if (!match)
+      throw new StashError('STASH_INVALID_DATA', '无效历史路径', { kind: 'history-path' });
     id = sessionId(match[1]!);
     suffix = match[2] || 'turns';
   } else return null;
@@ -58,7 +60,7 @@ export function historyTarget(path: string, current: string): HistoryTarget | nu
   const from = Number(match?.[1]),
     to = Number(match?.[2] ?? match?.[1]);
   if (!match || !Number.isSafeInteger(to) || from > to)
-    throw new StashError('STASH_INVALID_DATA', '无效事件范围');
+    throw new StashError('STASH_INVALID_DATA', '无效事件范围', { kind: 'event-window' });
   return { id, explicit, view: 'events', window: { from, to } };
 }
 
@@ -78,7 +80,12 @@ export function shortSessionId(id: string, ids: readonly string[]): string {
 export function resolveSessionId(value: string, ids: readonly string[]): string {
   if (ids.includes(value)) return value;
   const matches = ids.filter((id) => shortBase(id).startsWith(value));
-  if (!matches.length) throw new StashError('STASH_NOT_FOUND', '会话不在当前工作区');
-  if (matches.length > 1) throw new StashError('STASH_AMBIGUOUS_REF', matches.join(', '));
+  if (!matches.length)
+    throw new StashError('STASH_NOT_FOUND', '会话不在当前工作区', { kind: 'session-not-found' });
+  if (matches.length > 1)
+    throw new StashError('STASH_AMBIGUOUS_REF', '会话 ID 不唯一', {
+      kind: 'ambiguous-session',
+      candidates: matches,
+    });
   return matches[0]!;
 }

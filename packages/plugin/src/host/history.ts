@@ -15,7 +15,6 @@ import {
   historyEvents,
   historySummaries,
   historySearchResult,
-  HISTORY_BUDGET_ERROR,
   LiteralHistorySearch,
 } from '@wahhheee/stash-core';
 import type {
@@ -54,7 +53,10 @@ export class HistoryBrowser {
     const signature = JSON.stringify(args);
     const previous = cursor ? this.pages.get(cursor) : undefined;
     if (cursor && (!previous || previous.signature !== signature))
-      throw new StashError('STASH_STALE_READ', '历史续读标识已失效或参数变化');
+      throw new StashError('STASH_STALE_READ', '历史续读标识已失效或参数变化', {
+        kind: 'cursor',
+        scope: 'history',
+      });
     const text = previous?.text ?? (await this.render(input));
     const offset = previous?.offset ?? 0;
     const next = randomUUID();
@@ -73,7 +75,11 @@ export class HistoryBrowser {
       }
       end = lo;
       if (end < text.length && /[\uD800-\uDBFF]/u.test(text.charAt(end - 1))) end--;
-      if (end === offset) throw new StashError('STASH_BUDGET_EXCEEDED', HISTORY_BUDGET_ERROR);
+      if (end === offset)
+        throw new StashError('STASH_BUDGET_EXCEEDED', '历史读取预算不足', {
+          kind: 'view-budget',
+          scope: 'history',
+        });
     }
     if (end < text.length) {
       this.pages.set(next, { signature, text, offset: end });
@@ -92,10 +98,22 @@ export class HistoryBrowser {
     const target = memoryTarget
       ? { id: memoryTarget.id, explicit: memoryTarget.explicit, view: 'turns' as const }
       : historyTarget(input.path, this.current);
-    if (!target) throw new StashError('STASH_UNSUPPORTED', '非历史路径');
+    if (!target) throw new StashError('STASH_UNSUPPORTED', '非历史路径', { kind: 'history-path' });
+    if (
+      memoryTarget &&
+      (input.query !== undefined ||
+        input.since !== undefined ||
+        input.until !== undefined ||
+        input.detail !== undefined ||
+        input.all !== undefined)
+    )
+      throw new StashError('STASH_UNSUPPORTED', '会话记忆只支持路径和续读', {
+        kind: 'history-options',
+      });
     const range = timeWindow(input.since, input.until);
     const query = input.query === undefined ? undefined : literalText(input.query);
-    if (query === '') throw new StashError('STASH_INVALID_DATA', '查询不能为空');
+    if (query === '')
+      throw new StashError('STASH_INVALID_DATA', '查询不能为空', { kind: 'query-empty' });
     if (query && target.view === 'sessions' && !input.since && !input.until && !input.all)
       throw new StashError('STASH_SCOPE_REQUIRED', '请先收窄搜索范围');
     const ids = target.explicit
@@ -116,14 +134,6 @@ export class HistoryBrowser {
       );
     }
     if (memoryTarget) {
-      if (
-        input.query !== undefined ||
-        input.since !== undefined ||
-        input.until !== undefined ||
-        input.detail !== undefined ||
-        input.all !== undefined
-      )
-        throw new StashError('STASH_UNSUPPORTED', '会话记忆只支持路径和续读');
       const files = sessions[0]!.memory ?? {};
       const path = memoryTarget.path;
       if (path === '/' || path === '/notes' || path.endsWith('/'))
@@ -131,6 +141,8 @@ export class HistoryBrowser {
           .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
           .map(
             ([p, content]) =>
+              'dsh://session/' +
+              sessions[0]!.id +
               p +
               (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
           )
@@ -144,7 +156,7 @@ export class HistoryBrowser {
       (!sessions[0]?.events.some((e) => e.seq === target.window!.from) ||
         !sessions[0]?.events.some((e) => e.seq === target.window!.to))
     )
-      throw new StashError('STASH_NOT_FOUND', '事件范围不存在');
+      throw new StashError('STASH_NOT_FOUND', '事件范围不存在', { kind: 'event-not-found' });
     const inRange = (time: string) =>
       Date.parse(time) >= range.from && Date.parse(time) <= range.to;
     const events = sessions
@@ -200,7 +212,8 @@ export class HistoryBrowser {
         ),
       );
     if (target.view === 'summaries') return historySummaries(events);
-    if (!target.window) throw new StashError('STASH_NOT_FOUND', '事件范围不存在');
+    if (!target.window)
+      throw new StashError('STASH_NOT_FOUND', '事件范围不存在', { kind: 'event-not-found' });
     if (target.window.from === target.window.to) {
       const turn = session.turns.find(
         (t) => t.from <= target.window!.from && t.to >= target.window!.to,

@@ -159,6 +159,3 @@ function searchSnippet(text: string, query: string): string {
   const offset = Math.max(0, literalText(normalized).indexOf(literalText(query)) - 24);
   return (offset ? '…' : '') + preview(normalized.slice(offset), 80);
 }
-
-export const HISTORY_BUDGET_ERROR =
-  'The history envelope exceeds the view budget. Increase viewBudgetTokens or use a shorter path.';

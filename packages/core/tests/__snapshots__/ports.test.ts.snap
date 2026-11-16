@@ -8,7 +8,7 @@ Write costly recurring lessons and concluded decisions under /notes/. One fact p
   "tokens": 433,
   "tools": [
     {
-      "description": "Read workspace/session rules, notes, history paths, dsh references or /.guide.md. History supports literal query, since/until, brief/full detail and pagination. Continue with the returned cursor until complete before editing.",
+      "description": "Read workspace/session rules, notes, history paths, dsh references or /.guide.md. Rules and notes accept only path and cursor. History supports literal query, since/until, brief/full detail and pagination. Continue with unchanged arguments and each returned cursor until complete before editing.",
       "name": "memory_view",
       "parameters": {
         "additionalProperties": false,
@@ -47,7 +47,7 @@ Write costly recurring lessons and concluded decisions under /notes/. One fact p
       },
     },
     {
-      "description": "Manage workspace or current-session rules and notes. Read the complete current file before edit, replace, archive or delete. create fails if the file exists; replace rewrites it; delete removes a note. Use only the fields listed for the selected op. Rules have a token budget; credentials are rejected.",
+      "description": "Manage workspace or current-session rules and notes when the current agent has write permission. Read the complete current file before edit, replace, archive or delete. create fails if the file exists; append adds content to an existing file; replace rewrites it. archive retains a note but excludes it from future indexes; existing rules imports remain active. delete removes a note. Rules cannot be archived or deleted; to clear them, read fully then replace with empty content. Use only the fields listed for the selected op. Rules have a token budget; credentials are rejected.",
       "name": "memory_write",
       "parameters": {
         "additionalProperties": false,

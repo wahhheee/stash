@@ -50,6 +50,7 @@ export class WorkspaceMemory {
       throw new StashError(
         'STASH_BUDGET_EXCEEDED',
         budgetDetail(used, this.config.rulesBudgetTokens),
+        { kind: 'rules-budget', used, limit: this.config.rulesBudgetTokens },
       );
     return { state, journalId: observed.journalId };
   }
@@ -85,7 +86,10 @@ export class WorkspaceMemory {
     if (cursor) {
       const progress = this.cursors.get(cursor);
       if (!progress || progress.path !== path || progress.revision !== revision)
-        throw new StashError('STASH_STALE_READ', '续读标识已失效');
+        throw new StashError('STASH_STALE_READ', '续读标识已失效', {
+          kind: 'cursor',
+          scope: 'memory',
+        });
       offset = progress.offset;
     } else this.reads.delete(path);
     let end = text.length;
@@ -101,7 +105,11 @@ export class WorkspaceMemory {
         else high = mid - 1;
       }
       end = low;
-      if (end === offset) throw new StashError('STASH_BUDGET_EXCEEDED', '读取预算不足');
+      if (end === offset)
+        throw new StashError('STASH_BUDGET_EXCEEDED', '读取预算不足', {
+          kind: 'view-budget',
+          scope: 'memory',
+        });
     }
     if (end < text.length) {
       const next = revision + ':' + end;
@@ -118,6 +126,11 @@ export class WorkspaceMemory {
     knownRules: string | null = null,
   ): Promise<{ text: string; state: ResidentState; trusted: boolean }> {
     const path = memoryPath(input.path, true);
+    if (path === '/RULES.md' && (input.op === 'archive' || input.op === 'delete'))
+      throw new StashError('STASH_UNSUPPORTED', '规则不支持此操作', {
+        kind: 'rules-operation',
+        operation: input.op,
+      });
     const destructive = ['edit', 'replace', 'archive', 'delete'].includes(input.op);
     const expected = input.op === 'create' ? null : destructive ? this.reads.get(path) : undefined;
     if (destructive && expected === undefined)
@@ -160,12 +173,9 @@ export class WorkspaceMemory {
             break;
           }
           case 'archive':
-            if (path === '/RULES.md') throw new StashError('STASH_UNSUPPORTED', '不能归档规则');
             content = archiveNote(before!);
             break;
           case 'delete':
-            if (path === '/RULES.md')
-              throw new StashError('STASH_UNSUPPORTED', '不能删除规则；请显式替换为空');
             content = null;
             break;
         }
@@ -196,6 +206,7 @@ export class WorkspaceMemory {
           throw new StashError(
             'STASH_BUDGET_EXCEEDED',
             budgetDetail(used, this.config.rulesBudgetTokens),
+            { kind: 'rules-budget', used, limit: this.config.rulesBudgetTokens },
           );
         const remaining = (content ?? '').split('\n');
         const removed =
@@ -210,7 +221,7 @@ export class WorkspaceMemory {
         return {
           content,
           value: {
-            text: writeResult(path, used, this.config.rulesBudgetTokens, removed),
+            text: writeResult(path, used, this.config.rulesBudgetTokens, removed, input.op),
             state,
             trusted,
           },

@@ -80,7 +80,7 @@ async function readOptional(path: string): Promise<string | null> {
 
 async function atomic(path: string, text: string): Promise<void> {
   if (Buffer.byteLength(text) > 32 * 1024 * 1024)
-    throw new StashError('STASH_INVALID_DATA', '写入内容超过 32 MiB');
+    throw new StashError('STASH_INVALID_DATA', '写入内容超过 32 MiB', { kind: 'storage-size' });
   const temp = join(dirname(path), '.tmp-' + randomUUID());
   const file = await open(temp, 'wx', 0o600);
   try {
@@ -323,7 +323,7 @@ export class FileMemoryStore implements MemoryStore {
   private appendText(journal: JournalCache, change: JournalChange): string {
     const text = (journal.terminated ? '' : '\n') + JSON.stringify(change) + '\n';
     if (journal.size + Buffer.byteLength(text) > 32 * 1024 * 1024)
-      throw new StashError('STASH_INVALID_DATA', '修改日志超过 32 MiB');
+      throw new StashError('STASH_INVALID_DATA', '修改日志超过 32 MiB', { kind: 'storage-size' });
     return text;
   }
 
@@ -374,7 +374,9 @@ export class FileMemoryStore implements MemoryStore {
       revision !== (change.before?.revision ?? null) &&
       revision !== (change.after?.revision ?? null)
     )
-      throw new StashError('STASH_STALE_READ', '恢复期间发现外部修改');
+      throw new StashError('STASH_STALE_READ', '恢复期间发现外部修改', {
+        kind: 'recovery-conflict',
+      });
     const journal = await this.recoverJournal(id, change);
     const recorded = journal.changes.find((c) => c.id === change.id);
     if (recorded && JSON.stringify(recorded) !== JSON.stringify(change))
@@ -491,8 +493,10 @@ export class FileMemoryStore implements MemoryStore {
       await this.read(id, path);
       const files = await this.scan(id, true);
       if ([...files.keys()].some((p) => p !== path && p.toLowerCase() === path.toLowerCase()))
-        throw new StashError('STASH_INVALID_DATA', '路径大小写冲突');
+        throw new StashError('STASH_INVALID_DATA', '路径大小写冲突', { kind: 'path-case' });
       const before = files.has(path) ? memoryFile(files.get(path)!) : null;
+      if (op === 'create' && expected === null && before !== null)
+        throw new StashError('STASH_ALREADY_EXISTS', '文件已存在');
       if (expected !== undefined && expected !== (before?.revision ?? null))
         throw new StashError('STASH_STALE_READ', '文件已变化');
       const result = transform(files);

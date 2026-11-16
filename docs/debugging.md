@@ -72,6 +72,8 @@ PTC 的会话写入在外层 run_code 结算时由 deferContext 留下通知。�
 
 会话路径的完整读取资格绑定当前 agent；重启、内容变化或续读参数变化后须重新读取。../<id>/ 仅只读，跨工作区使用完整引用。子代理被拒绝写入时检查 subagentWrite，默认 false。其父会话规则来自父日志；离线 reconcile 缺少父日志时明确失败。
 
+STASH_READ_ONLY 的文字区分子代理策略、其他会话目标和历史记录。子代理策略拒绝同时覆盖工作区与会话层，改换路径不能解除限制；开启 subagentWrite 也不会允许写其他会话或历史。STASH_ALREADY_EXISTS 需要读取后选择更新操作或新的文件路径，重复 create 无效。读取预算不足检查 viewBudgetTokens；规则预算包含被并入的笔记正文。会话提交链不连续属于 STASH_INVALID_DATA，重新读取笔记不能修复日志。
+
 ## trace 与报告
 
 trace 默认 off；metadata 只记录白名单元数据，content 允许正文。/stash trace 只改变当前实例，持久配置由插件设置管理。文件按 UTC 日写入 .trace/，按 traceRetentionDays 清理，常见 sk- 和 Bearer 凭据脱敏。

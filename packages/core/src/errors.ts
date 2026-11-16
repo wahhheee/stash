@@ -10,7 +10,7 @@ export type StashValidationDetail =
 
 export type StashErrorDetail =
   | StashValidationDetail
-  | { kind: 'read-only'; reason: 'subagent' | 'sibling' | 'history' }
+  | { kind: 'read-only'; reason: 'subagent' | 'sibling' | 'history' | 'policy' }
   | { kind: 'memory-path'; writable: boolean }
   | { kind: 'rules-operation'; operation: 'archive' | 'delete' }
   | { kind: 'cursor'; scope: 'memory' | 'history' }
@@ -41,6 +41,7 @@ export type StashErrorDetail =
     };
 
 export type StashErrorCode =
+  | 'STASH_DISABLED'
   | 'STASH_STALE_READ'
   | 'STASH_UNSUPPORTED'
   | 'STASH_READ_ONLY'

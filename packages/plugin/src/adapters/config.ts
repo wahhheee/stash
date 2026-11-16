@@ -4,6 +4,7 @@ import { resolveDshHome, expandHomePath } from '@deepseek-ai/dsh-home-paths';
 import type { TraceLevel } from '@wahhheee/stash-core';
 
 export interface Config {
+  enabled?: boolean;
   subagentWrite?: boolean;
   trace?: TraceLevel;
   traceRetentionDays?: number;
@@ -15,6 +16,7 @@ export interface Config {
 }
 
 export const Config: Schema<Config> = Schema.object({
+  enabled: Schema.boolean().default(true).description('记忆总开关。'),
   subagentWrite: Schema.boolean().default(false).description('允许子代理写入记忆。'),
   trace: Schema.union(['off', 'metadata', 'content'])
     .default('off')
@@ -50,6 +52,7 @@ export const Config: Schema<Config> = Schema.object({
 });
 
 export interface ResolvedConfig {
+  enabled: boolean;
   subagentWrite: boolean;
   trace: TraceLevel;
   traceRetentionDays: number;
@@ -66,6 +69,7 @@ export function resolveConfig(input: Config = {}): ResolvedConfig {
   const root = config.memoryRoot?.trim();
   const expanded = root ? expandHomePath(root) : join(home, 'memory');
   return {
+    enabled: config.enabled ?? true,
     subagentWrite: config.subagentWrite ?? false,
     trace: config.trace ?? 'off',
     rulesBudgetTokens: config.rulesBudgetTokens ?? 1600,

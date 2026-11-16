@@ -94,12 +94,15 @@ export class DshHistory implements HistoryPort, WorkspacePort {
     }
   }
 
-  async lineage(id: string): Promise<{ source: string | null; candidates: string[] } | undefined> {
+  async lineage(
+    id: string,
+    exact = false,
+  ): Promise<{ source: string | null; candidates: string[] } | undefined> {
     const prefix = await this.inspect(id, (session) =>
       session.snapshotEvents().slice(0, session.inheritedEventCount),
     );
     if (!prefix.length) return undefined;
-    for (const event of [...prefix].reverse()) {
+    for (const event of exact ? [] : [...prefix].reverse()) {
       const commit = eventCommit(event);
       const source = commit?.sessionId ?? eventResident(event)?.state.session?.id;
       if (source && source !== id) return { source, candidates: [source] };
@@ -121,6 +124,7 @@ export class DshHistory implements HistoryPort, WorkspacePort {
 
   async memorySnapshot(id: string) {
     return this.inspect(id, (session) => ({
+      started: session.snapshotEvents().some((event) => event.type === 'system/message'),
       files: commitFiles(
         this.memoryProjection?.stateOf(session) ?? foldSession(session.snapshotEvents()),
       ),

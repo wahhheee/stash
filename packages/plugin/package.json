@@ -1,6 +1,6 @@
 {
   "name": "@wahhheee/dsh-stash",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "DSH 工作区记忆、原始历史与引用",
   "type": "module",
   "license": "MIT",
@@ -66,7 +66,8 @@
     "@deepseek-ai/dsh-token-meter": "0.2.2-rc.3",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
     "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-workspace": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-storage-domain": "0.2.2-rc.3"
   },
   "dependencies": {
     "@deepseek-ai/dsh-home-paths": "0.2.2-rc.3",

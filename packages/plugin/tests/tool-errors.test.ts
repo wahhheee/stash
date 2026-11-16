@@ -42,6 +42,11 @@ async function fixture() {
   const call = async (name: string, args: Record<string, unknown>) => {
     step++;
     const batch = await ctx.tools.execute({
+      toolSet: await ctx.tools.resolve({
+        agent,
+        signal: new AbortController().signal,
+        modelSelection: { provider: 'mock', model: 'mock' },
+      }),
       agent,
       signal: new AbortController().signal,
       log: { turn: 1, step },

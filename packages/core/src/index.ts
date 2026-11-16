@@ -12,3 +12,5 @@ export * from './refs.ts';
 export * from './history.ts';
 export * from './commits.ts';
 export * from './templates/history.ts';
+
+export * from './switches.ts';

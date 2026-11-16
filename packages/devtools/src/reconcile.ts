@@ -60,7 +60,14 @@ export async function reconcile(
           const record = eventResident(event);
           if (record) records.push(record);
         }
-        const actual = composeResident(files, offlineMeter, audit.config.indexBudgetTokens);
+        const actual = composeResident(
+          audit.clean || audit.disabled ? new Map() : files,
+          offlineMeter,
+          audit.config.indexBudgetTokens,
+        );
+        if (audit.disabled !== undefined) actual.disabled = audit.disabled;
+        if (audit.clean !== undefined) actual.clean = audit.clean;
+        if (audit.policyReadOnly !== undefined) actual.policyReadOnly = audit.policyReadOnly;
         if (audit.sessionMemory) {
           const state = composeResident(
             commitFiles(foldSession(prefix.snapshotEvents())),

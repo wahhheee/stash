@@ -5,13 +5,23 @@ import { createHarnessFixture } from '../packages/devtools/src/harness.ts';
 import { startWebHost } from '../packages/devtools/src/web-host.ts';
 import { runNode } from '../packages/devtools/src/harness.ts';
 import { readReport } from '../packages/plugin/src/adapters/diagnostics.ts';
+import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
+import { randomUUID } from 'node:crypto';
+import { DEFAULT_SWITCHES } from '../packages/core/src/index.ts';
+import type { MemoryPageData, PageAction } from '../packages/plugin/src/page-types.ts';
+import { reconcile } from '../packages/devtools/src/reconcile.ts';
+import { join } from 'node:path';
 
 it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async () => {
   const fixture = await createHarnessFixture();
+  const mock = await startMockLlmServer({ sequence: ['success'], repeatLast: true });
   try {
     await fixture.cli('--profile', 'web-test', '--from-default-profile', 'web', '--dump-config');
     await fixture.cli('plugin', '--profile', 'web-test', 'add', resolve('packages/plugin'));
-    const host = await startWebHost(fixture.home, fixture.env);
+    const host = await startWebHost(fixture.home, {
+      ...fixture.env,
+      DEEPSEEK_BASE_URL: mock.baseURL,
+    });
     try {
       const exchange = await fetch(host.url, { redirect: 'manual' });
       const cookie = exchange.headers
@@ -44,7 +54,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         return envelope.result.value;
       };
       expect(await invoke('stash/getStatus', {})).toMatchObject({
-        version: '0.4.0',
+        version: '0.5.0',
         hostVersion: hostManifest.version,
         memoryEnabled: true,
       });
@@ -52,6 +62,80 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         request: { cwd: fixture.cwd },
       });
       expect(sessionId).toBeTypeOf('string');
+      const target = { kind: 'session', id: sessionId };
+      const change = (action: PageAction) =>
+        invoke<MemoryPageData>('stash/changeMemory', { target, action });
+      const initial = await invoke<MemoryPageData>('stash/getMemory', { target });
+      expect(initial.files.session).toEqual([]);
+      await change({
+        op: 'save',
+        scope: 'workspace',
+        path: '/RULES.md',
+        content: 'WORKSPACE_SENTINEL',
+        expected: null,
+      });
+      const prompt = async () => {
+        const count = mock.requests.length;
+        await invoke('session/prompt', {
+          request: {
+            sessionId,
+            requestId: randomUUID(),
+            mode: 'queue',
+            content: [{ type: 'text', text: '继续' }],
+          },
+        });
+        expect(
+          (
+            await invoke<{ reason: string }>('session/wait', {
+              request: { sessionId, timeoutMs: 10000 },
+            })
+          ).reason,
+        ).toBe('idle');
+        expect(mock.requests.length).toBeGreaterThan(count);
+        return JSON.stringify(mock.requests.at(-1)!.body);
+      };
+      await change({
+        op: 'switches',
+        scope: 'session',
+        value: { ...DEFAULT_SWITCHES, inheritWorkspace: false },
+      });
+      const initialClean = await prompt();
+      expect(initialClean).not.toContain('WORKSPACE_SENTINEL');
+      await change({
+        op: 'save',
+        scope: 'session',
+        path: '/RULES.md',
+        content: 'SESSION_SENTINEL',
+        expected: null,
+      });
+      const clean = await prompt();
+      expect(clean).toContain('SESSION_SENTINEL');
+      expect(clean).not.toContain('WORKSPACE_SENTINEL');
+      expect(clean).toContain('memory_view');
+      await change({
+        op: 'switches',
+        scope: 'session',
+        value: { ...DEFAULT_SWITCHES, enabled: false },
+      });
+      expect(await prompt()).toContain('Memory is off for this session');
+      await change({
+        op: 'switches',
+        scope: 'session',
+        value: { ...DEFAULT_SWITCHES, writable: false },
+      });
+      const readonly = await prompt();
+      expect(readonly).toContain('WORKSPACE_SENTINEL');
+      expect(readonly).toContain('Memory is read-only');
+      await change({ op: 'switches', scope: 'session', value: DEFAULT_SWITCHES });
+      await prompt();
+      expect(
+        await reconcile(
+          join(fixture.home, 'memory'),
+          initial.workspaceId,
+          join(fixture.home, 'sessions'),
+          sessionId,
+        ),
+      ).toEqual(expect.arrayContaining([expect.stringContaining('OK ')]));
       const execute = (line: string) =>
         invoke<{ result: { kind: string; text: string } }>('commands/execute', {
           agentId: sessionId,
@@ -60,7 +144,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         });
       expect((await execute('/stash status')).result).toMatchObject({
         kind: 'success',
-        text: expect.stringContaining('stash 0.4.0'),
+        text: expect.stringContaining('stash 0.5.0'),
       });
       const bundle = await execute('/stash doctor --bundle');
       expect(bundle.result.kind).toBe('success');
@@ -76,6 +160,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
       await host.close();
     }
   } finally {
+    await mock.close();
     await fixture.close();
   }
 });

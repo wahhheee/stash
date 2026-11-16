@@ -229,4 +229,15 @@ export class WorkspaceMemory {
       },
     );
   }
+
+  /** 界面提交以加载时的哈希作为比较条件，仍沿用全部领域校验。 */
+  async editFromPage(path: string, content: string | null, expected: string | null) {
+    memoryPath(path, true);
+    if (expected !== null) this.reads.set(path, expected);
+    const input: WriteInput =
+      content === null
+        ? { path, op: 'delete' }
+        : { path, op: expected === null ? 'create' : 'replace', content };
+    return this.write(input, 'ui');
+  }
 }

@@ -1,3 +1,4 @@
+import { MEMORY_OFF, CLEAN_MEMORY, READ_ONLY_MEMORY } from './templates/switches.ts';
 import type { TokenEstimator } from './ports/index.ts';
 import { parseNote } from './notes.ts';
 import { expandRules } from './rules.ts';
@@ -13,6 +14,9 @@ import {
 } from './templates/index.ts';
 
 export interface ResidentState {
+  disabled?: boolean | undefined;
+  clean?: boolean | undefined;
+  policyReadOnly?: boolean | undefined;
   rules: string;
   index: string;
   folded: boolean;
@@ -129,6 +133,7 @@ export function foldResident(
       if (record.kind === 'position') {
         if (previous.session && record.state.session)
           state = {
+            ...previous,
             rules: previous.rules,
             index: previous.index,
             folded: previous.folded,
@@ -136,6 +141,7 @@ export function foldResident(
           };
       } else {
         state = {
+          ...previous,
           rules: record.scope === 'session' ? previous.rules : record.state.rules,
           index: previous.index,
           folded: previous.folded,
@@ -163,6 +169,16 @@ export function decideResident(
   compacted?: string,
 ): { kind: 'full' | 'rules' | 'none' | 'position'; reason: string; text: string } {
   const full = () => renderResident(workspace, actual, compacted);
+  if (actual.disabled)
+    return believed && !believed.disabled
+      ? { kind: 'full', reason: 'memory-disabled', text: MEMORY_OFF }
+      : { kind: 'none', reason: 'memory-disabled', text: '' };
+  if (
+    believed?.disabled ||
+    Boolean(believed?.clean) !== Boolean(actual.clean) ||
+    Boolean(believed?.policyReadOnly) !== Boolean(actual.policyReadOnly)
+  )
+    return { kind: 'full', reason: 'memory-policy-changed', text: full() };
   if (believed && actual.session && !believed.session)
     return { kind: 'full', reason: 'missing-session-snapshot', text: full() };
   if (!believed)
@@ -232,5 +248,17 @@ export function renderResident(
   state: ResidentState,
   compacted?: string,
 ): string {
-  return fullContext(workspace, state.rules, state.index, state.folded, compacted, state.session);
+  if (state.disabled) return MEMORY_OFF;
+  return (
+    (state.policyReadOnly ? READ_ONLY_MEMORY + '\n' : '') +
+    fullContext(
+      workspace,
+      state.rules,
+      state.index,
+      state.folded,
+      compacted,
+      state.session,
+      state.clean ? CLEAN_MEMORY : undefined,
+    )
+  );
 }

@@ -3,6 +3,8 @@ import { lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/p
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { z } from 'zod';
+import { switchSchema } from './page-schema.ts';
+import type { SwitchRecord } from '@wahhheee/stash-core';
 import { containsSecret } from './redaction.ts';
 import { auditSchema } from './memory-records.ts';
 import { memoryPath, StashError } from '@wahhheee/stash-core';
@@ -28,7 +30,13 @@ const changeSchema = z
 export type JournalChange = z.infer<typeof changeSchema>;
 
 export const workspaceSchema = z
-  .object({ format: z.literal(1), id: z.string(), path: z.string(), title: z.string() })
+  .object({
+    format: z.literal(1),
+    id: z.string(),
+    path: z.string(),
+    title: z.string(),
+    switches: switchSchema.optional(),
+  })
   .strict();
 
 export type WorkspaceInfo = z.infer<typeof workspaceSchema>;
@@ -39,6 +47,10 @@ export function digest(text: string): string {
 
 export function memoryFile(content: string): MemoryFile {
   return { content, revision: digest(content) };
+}
+
+export function snapshotRevision(files: ReadonlyMap<string, string>): string {
+  return digest(JSON.stringify([...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))));
 }
 
 interface CachedFile {
@@ -168,12 +180,33 @@ export class FileMemoryStore implements MemoryStore {
     await this.locked(info.id, async () => {
       const path = join(this.directory(info.id), 'workspace.json');
       const old = await readOptional(path);
+      let switches: SwitchRecord | undefined;
       if (old !== null) {
         const parsed = workspaceSchema.parse(JSON.parse(old));
+        switches = parsed.switches;
         if (parsed.id !== info.id) throw new StashError('STASH_INVALID_DATA', '工作区标识不符');
       }
-      if (old !== JSON.stringify(info)) await atomic(path, JSON.stringify(info));
+      const next = JSON.stringify({ ...info, ...(switches ? { switches } : {}) });
+      if (old !== next) await atomic(path, next);
       await this.recover(info.id);
+    });
+  }
+
+  async getSwitches(id: string): Promise<SwitchRecord | null> {
+    await this.safe(this.directory(id));
+    const text = await readOptional(join(this.directory(id), 'workspace.json'));
+    if (text === null) return null;
+    const info = workspaceSchema.parse(JSON.parse(text));
+    if (info.id !== id) throw new StashError('STASH_INVALID_DATA', '工作区标识不符');
+    return info.switches ?? null;
+  }
+
+  async setSwitches(id: string, value: SwitchRecord): Promise<void> {
+    await this.locked(id, async () => {
+      const path = join(this.directory(id), 'workspace.json');
+      const info = workspaceSchema.parse(JSON.parse((await readOptional(path)) ?? 'null'));
+      if (info.id !== id) throw new StashError('STASH_INVALID_DATA', '工作区标识不符');
+      await atomic(path, JSON.stringify({ ...info, switches: switchSchema.parse(value) }));
     });
   }
 
@@ -537,5 +570,46 @@ export class FileMemoryStore implements MemoryStore {
       value: undefined,
     }));
     return (await this.journal(id)).find((change) => change.callId === callId)!;
+  }
+
+  /** 整体清空持有工作区锁；每个删除沿用可恢复日志，不删除历史与设置。 */
+  async clear(id: string, expected: string): Promise<void> {
+    await this.locked(id, async () => {
+      await this.validateWorkspace(id);
+      await this.recover(id);
+      for (const path of await this.list(id)) await this.read(id, path);
+      const files = await this.scan(id, true);
+      if (snapshotRevision(files) !== expected)
+        throw new StashError('STASH_STALE_READ', '记忆已变化，请刷新后重新确认');
+      const changes = [...files].map(([path, content]): JournalChange => ({
+        v: 1,
+        id: randomUUID(),
+        workspaceId: id,
+        path,
+        before: memoryFile(content),
+        after: null,
+        timestamp: new Date().toISOString(),
+        actor: 'ui',
+        callId: 'clear',
+        op: 'delete',
+      }));
+      const journal = await this.loadJournal(id);
+      if (
+        (journal.size ?? 0) +
+          changes.reduce(
+            (size, change) => size + Buffer.byteLength(JSON.stringify(change)) + 1,
+            0,
+          ) >
+        32 * 1024 * 1024
+      )
+        throw new StashError('STASH_INVALID_DATA', '修改日志容量不足');
+      for (const change of changes) {
+        const pending = join(this.directory(id), '.pending.json');
+        await atomic(pending, JSON.stringify(change));
+        await this.replace(id, change.path, null);
+        await this.append(id, change);
+        await unlink(pending);
+      }
+    });
   }
 }

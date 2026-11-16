@@ -128,6 +128,10 @@ export class SessionMemoryStore implements MemoryBackend {
     return this.pending.at(-1)!;
   }
 
+  pendingCommits(): readonly MemoryCommit[] {
+    return [...this.pending];
+  }
+
   state(): CommitState {
     return this.pending.reduce(foldCommit, this.stateOf());
   }

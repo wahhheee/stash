@@ -9,6 +9,9 @@ export const residentSchema = z
     kind: z.enum(['full', 'rules', 'write', 'position']),
     state: z
       .object({
+        disabled: z.boolean().optional(),
+        clean: z.boolean().optional(),
+        policyReadOnly: z.boolean().optional(),
         rules: z.string(),
         index: z.string(),
         folded: z.boolean(),
@@ -54,6 +57,9 @@ export const auditSchema = z
       .strict()
       .optional(),
     readOnly: z.boolean().optional(),
+    disabled: z.boolean().optional(),
+    clean: z.boolean().optional(),
+    policyReadOnly: z.boolean().optional(),
   })
   .strict();
 

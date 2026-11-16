@@ -198,6 +198,11 @@ for (const subagentWrite of [false, true])
         const beforeSession = session.store.state();
         for (const [index, path] of ['/RULES.md', './RULES.md'].entries()) {
           const batch = await ctx.tools.execute({
+            toolSet: await ctx.tools.resolve({
+              agent: child,
+              signal: new AbortController().signal,
+              modelSelection: { provider: 'mock', model: 'mock' },
+            }),
             agent: child,
             signal: new AbortController().signal,
             log: { turn: 1, step: index + 1 },

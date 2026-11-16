@@ -48,6 +48,10 @@ export class HistoryBrowser {
     private readonly visibility: HistoryVisibility = { discoverable: () => true },
   ) {}
 
+  clearPages(): void {
+    this.pages.clear();
+  }
+
   async view(input: HistoryInput): Promise<string> {
     const { cursor, ...args } = input;
     const signature = JSON.stringify(args);

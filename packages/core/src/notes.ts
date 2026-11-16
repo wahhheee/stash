@@ -54,3 +54,12 @@ export function archiveNote(text: string): string {
   const note = parseNote(text);
   return '---\n' + stringify({ ...note.fields, status: 'archived' }) + '---\n' + note.body;
 }
+
+export function promoteNote(text: string, source: string): string {
+  const note = parseNote(text);
+  const previous = note.fields.sources;
+  const sources = previous === undefined ? [] : Array.isArray(previous) ? previous : [previous];
+  return (
+    '---\n' + stringify({ ...note.fields, sources: [...sources, source] }) + '---\n' + note.body
+  );
+}

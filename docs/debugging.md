@@ -48,9 +48,11 @@ pnpm devtools view /path/to/memory/WORKSPACE_ID ./log/turns /path/to/DSH_HOME/se
 pnpm devtools view /path/to/memory/WORKSPACE_ID /sessions /path/to/DSH_HOME/sessions SESSION_ID '{"query":"架构","all":true}'
 pnpm devtools journal /path/to/memory/WORKSPACE_ID
 pnpm devtools reconcile /path/to/memory/WORKSPACE_ID /path/to/DSH_HOME/sessions SESSION_ID
+pnpm devtools fold /path/to/DSH_HOME/sessions SESSION_ID
+pnpm devtools view /path/to/memory/WORKSPACE_ID ./RULES.md /path/to/DSH_HOME/sessions SESSION_ID
 ```
 
-以上命令只读。render 使用默认 1600 token 索引预算；自定义配置下应使用宿主 /stash render 查看精确文本。离线 view 完整输出文件，不给在线工具签发读取凭据。journal 包含记忆全文，请只在合适的位置查看。
+以上命令只读。render 使用默认 1600 token 索引预算；自定义配置下应使用宿主 /stash render 查看精确文本。离线 view 完整输出文件，不给在线工具签发读取凭据。journal 和 fold 包含记忆全文，请只在合适的位置查看。
 
 历史 view 使用同一渲染器，自动续读所有页面。离线会话清单仅按工作区最后已知路径与 cwd 精确匹配，工作区改名后用完整引用读取。STASH_SCOPE_REQUIRED 表示应指定会话或时间窗；STASH_AMBIGUOUS_REF 要求更长 ID；STASH_HISTORY_UNREADABLE 和 STASH_SEARCH_FAILED 表示读取失败，与 no-match 不同。续读 STASH_STALE_READ 时从第一页重新开始。
 
@@ -61,6 +63,14 @@ reconcile 使用宿主 persistence 的 read 句柄和 Session surface 投影，�
 verify 检查版本、哈希链、文件与日志的一致性、锁、pending 和 trace。尚未观察到的外部编辑会暂时报不一致，宿主发现并记录后可消除；同时间同大小修改须先显式读取或重建缓存。成功退出 0，检查失败 1，参数错误 2。未知 workspace 格式不覆盖。
 
 正常 memory_write 成功结果只显示路径、预算和 replace 删除的行。若请求与写入之间出现外部规则变化，下一请求可以补发包含自身修改的差异；这是保守确认，不代表写入重复执行。新引入规则引用、嵌套调用也可能补发。排查时使用 context 和 explain 比较可见状态；reconcile 同时支持缺少 trusted 字段的旧记录和新记录。
+
+## 会话记忆故障
+
+会话记忆的正本是 DSH 原始日志，memoryRoot 内没有对应会话 Markdown。fold 逐条列出提交、seq 和折叠后状态；会话日志读取失败、未知提交版本、哈希错误和断链均退出 1。投影缓存不是备份，删除后可以重建，但不要删除会话日志来清理缓存。/stash context 和 render 包含会话层与父规则。
+
+PTC 的会话写入在外层 run_code 结算时由 deferContext 留下通知。多个嵌套调用共享临时状态，最终是否持久化以 fold 输出为准。中断后先检查日志再重试。分叉读取的是切点前提交；原会话之后的变化不会同步。位置通知不确认尚未显示的工作区修改。
+
+会话路径的完整读取资格绑定当前 agent；重启、内容变化或续读参数变化后须重新读取。../<id>/ 仅只读，跨工作区使用完整引用。子代理被拒绝写入时检查 subagentWrite，默认 false。其父会话规则来自父日志；离线 reconcile 缺少父日志时明确失败。
 
 ## trace 与报告
 
@@ -76,4 +86,4 @@ packages/devtools/src/evaluation.ts 导出四个阶段二任务及 evaluateBehav
 
 ## 验证范围
 
-本地 Windows 覆盖核心解析、预算、模板、缓存命中与失效、追加日志残片恢复、两个独立 Node 进程并发、Cordis 生命周期、客户端、真实 SDK、多会话共享、简短写入确认、请求期间的外部编辑与补发、重启、/compact 恢复、离线 reconcile、Web Gateway 和 tarball 安装。Linux/macOS 结果以 CI 为准。阶段二未执行 Desktop 人工视觉检查；阶段一的隔离 Desktop 安装记录见 0001 决策记录。
+本地 Windows 覆盖核心解析、预算、模板、缓存命中与失效、追加日志残片恢复、两个独立 Node 进程并发、Cordis 生命周期、客户端、真实 SDK、多会话共享、简短写入确认、请求期间的外部编辑与补发、重启、/compact 恢复、离线 reconcile、Web Gateway 和 tarball 安装。Linux/macOS 结果以 CI 为准。阶段四包含标准/PTC 多次嵌套读写、分叉前缀、缓存删除重建、子代理策略、提升和跨会话只读验收。阶段二未执行 Desktop 人工视觉检查；阶段一的隔离 Desktop 安装记录见 0001 决策记录。

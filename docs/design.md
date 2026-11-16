@@ -1,6 +1,6 @@
-# stash 0.3.0 工程设计
+# stash 0.4.0 工程设计
 
-stash 是 DSH 外部插件，提供工作区规则与笔记、常驻上下文、原始历史查询与引用、状态面板、诊断和离线重放。会话记忆、开关界面和整理回滚尚未实现。长期设计见 [目标设计](roadmap-design.md)。
+stash 是 DSH 外部插件，提供工作区与会话规则及笔记、分叉继承、常驻上下文、原始历史查询与引用、状态面板、诊断和离线重放。开关界面和整理回滚尚未实现。长期设计见 [目标设计](roadmap-design.md)。
 
 ## 分层
 
@@ -32,7 +32,7 @@ pending 在下次请求恢复。恢复校验当前文件必须匹配 before 或 
 
 memory_view 支持 /、/RULES.md、/notes/ 及子目录、笔记文件、/.guide.md。长结果按预算分页，cursor 绑定当前 agent、路径、内容哈希与连续读取进度。完整读取后才获得 edit、replace、archive、delete 的修改资格。工具写入不自动授予下次覆盖资格。
 
-memory_write 支持 create、append、edit、replace、archive、delete。create 要求不存在；append 在锁内追加且要求文件存在；edit 要求旧文本唯一；replace 返回被删除的行。规则不可 archive/delete，清空须读取后 replace。子代理只读。常见 API key、Bearer、GitHub token、AWS access key 和私钥头拒绝存储；外部扫描在写入日志前检查，不把匹配正文放入错误。此检查不替代用户的隐私判断。
+memory_write 支持 create、append、edit、replace、archive、delete。create 要求不存在；append 在锁内追加且要求文件存在；edit 要求旧文本唯一；replace 返回被删除的行。规则不可 archive/delete，清空须读取后 replace。子代理默认只读，可用 subagentWrite 放开。常见 API key、Bearer、GitHub token、AWS access key 和私钥头拒绝存储；外部扫描在写入日志前检查，不把匹配正文放入错误。此检查不替代用户的隐私判断。
 
 六种操作共用 path 和 op；create、append、replace 必须提供字符串 content，edit 必须提供非空 old 和字符串 new，new 为空字符串表示删除匹配文本。archive、delete 只接受 path 和 op；其余正文参数必须省略，空字符串和 null 均不等于省略。操作字段表同时生成工具说明、输入类型和适配器校验规则。STASH_INVALID_DATA 按参数缺失、类型、多余字段、编辑零匹配或多匹配、笔记 frontmatter 格式给出具体修正提示，不回显输入正文和底层异常。
 
@@ -47,6 +47,24 @@ memory_write 支持 create、append、edit、replace、archive、delete。create
 压缩删除快照后，最新完整快照重新进入上下文，包含宿主 checkpoint 的源事件范围。范围行提供 ./log/<a>..<b> 原文读取提示。记忆中的尖括号在注入时转义，避免提前闭合模板。
 
 开关由 host/policy 统一提供固定开启策略，界面没有开关。externalRuleUpdates 可选择下次请求或下次完整恢复时生效。无独立私有“已发送”缓存作为事实来源。
+
+## 会话记忆与分支
+
+会话层不落独立 Markdown 文件。每次写入产生 v: 1 提交，包含 UUID、写入时会话 ID、路径、结果全文或 null、修改前后 SHA-256。原生调用保存在成功 tool/result 的 meta.stashCommit；PTC 嵌套调用通过 deferContext 追加 stash-commit 来源消息。失败工具结果不作为提交；通知载体也供后续界面编辑使用。界面编辑入口尚未提供。
+
+stashSessionMemory 是 stateVersion: 1 的宿主投影，按原始事件顺序折叠提交，验证版本、哈希、路径、凭据与修改前版本。相同提交 ID 和内容指纹幂等，冲突 ID 与断链明确失败。宿主裁剪产生的重复结果不重复应用；压缩移除可见消息不会移除原始提交。缓存由宿主维护，可以删除并从原始日志重建。
+
+同一次根调用中的嵌套读写可观察尚待外层结算的提交。最终工具失败撤销对应的待提交项，根调用结算或新请求清空暂存；持久状态只从最终日志重建。外层调用失败时是否已写入，以宿主最终留下的提交通知为准；不存在插件私有的成功副本。写入沿用工作区的六种操作、完整读取资格、旧版本检查、frontmatter、规则预算与凭据校验，单次结果文件上限 32 MiB。
+
+./RULES.md、./notes/ 和 ./ 是当前会话。../<id>/、/sessions/<id>/RULES.md、/sessions/<id>/notes/ 只读同工作区会话；完整 dsh://session/<id>/RULES.md 或 /notes/<name>.md 引用可跨工作区只读。其他会话的内容用 reference-only 包装，不授予本会话写入资格或成为常驻规则。
+
+常驻快照含工作区规则及索引、会话位置、会话规则及索引。工作区和会话层分别使用 rulesBudgetTokens、indexBudgetTokens。优先级为用户直接指令、仓库指令、会话规则、工作区规则。会话笔记索引只列本会话折叠结果，索引变化仍延迟到完整快照刷新。自身成功写入只确认对应层；PTC 记录保守补发会话规则。
+
+分叉完全依据宿主复制的原始前缀，继承切点之前的会话记忆，之后互不影响。继承快照仍可见、规则未变时只追加位置通知，不重写前缀。没有可见快照时完整恢复。谱系展示先取继承前缀中最后的 stash 提交或常驻记录的会话 ID；没有记录时用切口事件完整指纹匹配同工作区会话，多个候选保留歧义。谱系不参与状态继承。
+
+子代理默认只读，并在快照中单列父会话当前规则。父规则变更在下一请求刷新。subagentWrite 放开后，子代理可写工作区和自己的会话；不会直接写父会话。决策旁车只记录父会话 ID 与读取边界，重放需要相应父日志，不保存父规则正文。
+
+/sessions 显示规则非空行数、笔记文件数和可推断谱系；query 另外扫描满足时间窗的会话当前笔记全文。笔记结果指向当前文件，不声称是时间窗内的历史版本。提升通过读取会话笔记再 create 工作区笔记实现，sources 由调用方指回原会话，原文件不变。会话笔记写入结果提醒其作用域和提升方式。
 
 ## 原始记录与引用
 
@@ -66,22 +84,23 @@ query 仅用于历史路径。匹配基于宿主 extractSessionEventText 生成�
 
 ## 配置
 
-| 配置                | 默认            | 说明                           |
-| ------------------- | --------------- | ------------------------------ |
-| memoryRoot          | DSH_HOME/memory | 绝对路径、相对 DSH_HOME 或 ~   |
-| rulesBudgetTokens   | 1600            | 128–32000，展开后的规则预算    |
-| indexBudgetTokens   | 1600            | 128–32000，索引预算            |
-| viewBudgetTokens    | 4000            | 256–64000，单次读取预算        |
-| externalRuleUpdates | next-request    | next-request / next-compaction |
-| trace               | off             | off / metadata / content       |
-| traceRetentionDays  | 7               | 1–365 个 UTC 日历日            |
+| 配置                | 默认            | 说明                            |
+| ------------------- | --------------- | ------------------------------- |
+| subagentWrite       | false           | 放开子代理写入工作区与自身会话  |
+| memoryRoot          | DSH_HOME/memory | 绝对路径、相对 DSH_HOME 或 ~    |
+| rulesBudgetTokens   | 1600            | 128–32000，每层展开后的规则预算 |
+| indexBudgetTokens   | 1600            | 128–32000，每层索引预算         |
+| viewBudgetTokens    | 4000            | 256–64000，单次读取预算         |
+| externalRuleUpdates | next-request    | next-request / next-compaction  |
+| trace               | off             | off / metadata / content        |
+| traceRetentionDays  | 7               | 1–365 个 UTC 日历日             |
 
 配置经 Schemastery 校验，变更由宿主重载生效。预算通过 ctx.tokenMeter.estimateMessage 扣除固定消息包装估算；锁定 DSH 的算法为每 4 个 UTF-16 码元约 1 token，并非模型精确分词。devtools 使用同一算法；离线 render 的预算使用默认值。
 
 ## 诊断与重放
 
-/stash status 显示版本、记忆目录、预算与固定开关；context 比较可见与实际版本；render 输出现在完整注入的文本；explain [1–100] 显示当前实例最近的决策及哈希。doctor 检查权限、格式、修改链、文件一致性、锁和待提交记录。
+/stash status 显示版本、记忆目录、预算与固定开关；context 比较工作区、会话层的可见与实际版本；render 输出现在完整注入的文本；explain [1–100] 显示当前实例最近的决策及哈希。doctor 检查权限、格式、修改链、文件一致性、锁和待提交记录。
 
-每个工作区保存 .decisions-<SessionId>.jsonl，每行 v: 1，仅包含请求前日志位置、修改日志版本 ID、配置、决策、正文哈希和压缩范围，没有正文。它独立于可关闭的 trace，用于精确离线重放；当前不自动清理。决策文件继续采用整体原子替换，每次写入校验已有记录；当前没有为它提供残缺尾部恢复。reconcile 用 DSH persistence 的 read 句柄读取日志，以 Session 重建各请求前的 surface，并从修改日志版本重建实际记忆，比较决策和实际注入文本。未发出模型请求的尝试单独标注。重放需要完整会话日志、工作区修改日志与决策记录。
+每个工作区保存 .decisions-<SessionId>.jsonl，每行 v: 1，仅包含请求前日志位置、修改日志版本 ID、配置、决策、正文哈希和压缩范围，没有正文。它独立于可关闭的 trace，用于精确离线重放；当前不自动清理。决策文件继续采用整体原子替换，每次写入校验已有记录；当前没有为它提供残缺尾部恢复。reconcile 用 DSH persistence 的 read 句柄读取日志，以 Session 重建各请求前的 surface，并从修改日志版本重建实际记忆，比较决策和实际注入文本。未发出模型请求的尝试单独标注。重放需要完整会话日志、工作区修改日志与决策记录；子代理还需其引用的父会话日志。阶段四决策含 sessionMemory 标志，兼容没有该字段的旧工作区决策。离线 fold 按提交输出每一步的文件状态。
 
 trace 按 UTC 日轮转；报告为 format: 1 gzip JSON，兼容阶段一报告，只包含检查结果、生效配置和 trace 元数据，不附记忆或会话正文。宿主验证基线为 0.2.2-rc.3，范围 >=0.2.2-rc.3 <0.3.0-0。升级依据见 [宿主升级决策](decisions/0003-dsh-rc3.md)。

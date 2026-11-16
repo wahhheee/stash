@@ -1,6 +1,6 @@
 # stash
 
-DSH 工作区记忆插件。当前版本 0.3.0 提供工作区规则与笔记读写、常驻上下文、压缩后恢复、原始记录检索、引用复制、状态面板和离线重放。
+DSH 工作区记忆插件。当前版本 0.4.0 提供工作区与会话规则、笔记读写和分叉继承、常驻上下文、压缩后恢复、原始记录检索、引用复制、状态面板和离线重放。
 
 ## 开发
 
@@ -45,7 +45,7 @@ Desktop：在“插件 → 添加插件”中输入 packages/plugin 的绝对目
 
 ```sh
 pnpm --dir packages/plugin pack --pack-destination ../..
-pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.3.0.tgz
+pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.4.0.tgz
 ```
 
 尚未发布 npm 包。唯一分发包为 @wahhheee/dsh-stash；core 和 devtools 均为私有工作区包。
@@ -54,7 +54,7 @@ pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.3.0.tgz
 
 插件启用后固定开启工作区记忆。新会话首次请求注入规则和笔记索引；普通自身写入由简短工具结果确认，不重复发送完整规则。其他会话或编辑器改动在下一请求以增量通知生效；请求与写入交错时允许保守补发包含自身修改的差异。新引入的规则引用和嵌套调用也按保守补发处理。压缩后重新注入最新完整快照。
 
-请求前检查文件清单、mtime 与大小，仅变化文件重新读取和哈希；同时间同大小的外部修改可能暂时漏检。显式读取、写前目标版本校验和离线检查读取真实内容。子 Agent 只读；多个会话基于同一旧版本修改时，冲突者需重新读取，不自动合并。
+请求前检查文件清单、mtime 与大小，仅变化文件重新读取和哈希；同时间同大小的外部修改可能暂时漏检。显式读取、写前目标版本校验和离线检查读取真实内容。子 Agent 默认只读，可通过 subagentWrite 配置放开；多个会话基于同一旧版本修改时，冲突者需重新读取，不自动合并。
 
 修改日志直接追加，保留 pending 供中断恢复；无匹配 pending 的残缺日志明确报错。决策日志仍整体原子替换，用于离线重放。故障处理见调试手册。
 
@@ -70,6 +70,16 @@ description: Windows 构建产物过期时先 clean 再构建，只删 lib 无�
 
 记录适用条件、原因与证据；一篇只记一个事实。
 ```
+
+## 会话记忆与分支
+
+./RULES.md 和 ./notes/ 只属于当前会话及之后从它分叉的会话。会话记忆保存在原始会话日志中；压缩和重启后从日志重建。分叉只继承切点前的提交，之后双方独立演进。工作区和会话规则及索引分别使用配置中的预算。
+
+memory_view ../<会话 ID>/RULES.md 或 ../<会话 ID>/notes/ 只读参考另一会话，不把对方规则加入本会话。/sessions 显示规则行数和笔记数，搜索也覆盖当前会话笔记。跨工作区读取使用 dsh://session/<完整 ID>/notes/<文件>.md。
+
+只在本会话或分支成立的内容写到 ./notes/；可复用经验写到 /notes/。提升笔记时先读取原文，再在 /notes/ 新建副本，frontmatter 的 sources 指回原会话完整引用，原笔记保留。当前提供工具路径与提示，记忆页编辑和提升按钮属于后续阶段。
+
+标准执行与 PTC 嵌套工具均支持会话记忆。子代理常驻上下文包含父会话当前规则，默认拒绝写入；开启 subagentWrite 后可写工作区及自己的会话。
 
 ## 原始记录与引用
 
@@ -112,6 +122,6 @@ pnpm devtools verify /path/to/stash-report.json.gz
 - [工程设计](docs/design.md)、[调试手册](docs/debugging.md)、[开发约定](AGENTS.md)。
 - [目标设计](docs/roadmap-design.md)、[阶段规划](docs/roadmap-plan.md)仅描述规划；[阶段二决策记录](docs/decisions/0002-workspace-memory.md)记录实际差异与收尾取舍。
 
-记忆按 DSH 工作区共享。可以对模型说“以后提交信息用简体中文”，由 memory_write 保存到 /RULES.md。笔记位于 /notes/，可用 memory_view 阅读。完整读取后才能覆盖或删除；工具写入和已观察到的外部编辑都有修改历史。会话记忆、开关界面和回滚尚未提供。
+记忆按 DSH 工作区共享。可以对模型说“以后提交信息用简体中文”，由 memory_write 保存到 /RULES.md。笔记位于 /notes/，可用 memory_view 阅读。完整读取后才能覆盖或删除；工具写入和已观察到的外部编辑都有修改历史。开关界面和回滚尚未提供。
 
 MIT License。

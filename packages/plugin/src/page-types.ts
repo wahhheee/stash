@@ -1,4 +1,5 @@
 import type { SwitchRecord } from '@wahhheee/stash-core';
+import type { NoteForm, NoteProjection } from '@wahhheee/stash-core';
 
 export interface PageTarget {
   kind: 'workspace' | 'session';
@@ -9,6 +10,7 @@ export interface PageFile {
   path: string;
   content: string;
   revision: string;
+  note?: NoteProjection | null | undefined;
 }
 
 export interface MemoryPageData {
@@ -16,6 +18,7 @@ export interface MemoryPageData {
   workspaceId: string;
   title: string;
   sessionId: string | null;
+  sessionTitle?: string | undefined;
   globalEnabled: boolean;
   workspace: SwitchRecord;
   session: SwitchRecord;
@@ -41,3 +44,28 @@ export type PageAction =
     }
   | { op: 'promote'; path: string; destination: string; expected: string }
   | { op: 'clear'; scope: 'workspace' | 'session'; expected: string; confirm: true };
+
+export type PageEdit =
+  | PageAction
+  | {
+      op: 'note';
+      scope: 'workspace' | 'session';
+      path: string;
+      expected: string | null;
+      value: NoteForm;
+    };
+
+export interface PageMutation {
+  id: string;
+  action: PageEdit;
+}
+
+export type PageMutationResult =
+  | { ok: true; scope: 'workspace' | 'session'; file: PageFile | null; cleared: boolean }
+  | {
+      ok: false;
+      code: string;
+      field?: string | undefined;
+      used?: number | undefined;
+      limit?: number | undefined;
+    };

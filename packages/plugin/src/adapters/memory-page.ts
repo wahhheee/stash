@@ -7,16 +7,38 @@ import {
   StashError,
   promoteNote,
   memoryPath,
+  projectNote,
+  mergeNoteForm,
 } from '@wahhheee/stash-core';
 import { commitMessage } from './session-memory.ts';
 import { digest, snapshotRevision } from './memory-store.ts';
 import { WorkspaceMemory } from '../host/memory.ts';
 import type { MemoryAdapter } from './memory-dsh.ts';
-import type { PageTarget, PageAction, MemoryPageData } from '../page-types.ts';
+import type {
+  PageTarget,
+  PageAction,
+  MemoryPageData,
+  PageFile,
+  PageMutation,
+  PageMutationResult,
+} from '../page-types.ts';
+
+function pageFile(path: string, content: string): PageFile {
+  if (path === '/RULES.md') return { path, content, revision: digest(content) };
+  try {
+    return { path, content, revision: digest(content), note: projectNote(content) };
+  } catch {
+    return { path, content, revision: digest(content), note: null };
+  }
+}
 
 /** Remote 只操作用户指定的范围；会话提交占用宿主维护时段，防止和工具写入交错。 */
 export class MemoryPage {
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly mutations = new Map<
+    string,
+    { fingerprint: string; result: Promise<PageMutationResult> }
+  >();
 
   constructor(private readonly adapter: MemoryAdapter) {}
 
@@ -96,11 +118,12 @@ export class MemoryPage {
     const rows = (values: Map<string, string>) =>
       [...values]
         .sort(([a], [b]) => (a < b ? -1 : 1))
-        .map(([path, content]) => ({ path, content, revision: digest(content) }));
+        .map(([path, content]) => pageFile(path, content));
     return {
       workspaceId: id,
       title: this.adapter.ctx.workspaceRegistry.list().find((w) => w.id === id)!.title,
       sessionId,
+      sessionTitle: snapshot?.title ?? '',
       sessionEditable: snapshot?.started ?? false,
       globalEnabled: this.adapter.config.enabled,
       workspace,
@@ -112,6 +135,83 @@ export class MemoryPage {
   }
 
   async change(target: PageTarget, action: PageAction): Promise<MemoryPageData> {
+    await this.apply(target, action);
+    return this.read(target);
+  }
+
+  /** 回执与刷新分离；同一次请求重试复用结果，避免确认丢失后重复创建。 */
+  async mutate(target: PageTarget, request: PageMutation): Promise<PageMutationResult> {
+    const key = target.kind + ':' + target.id + ':' + request.id;
+    const fingerprint = digest(JSON.stringify(request.action));
+    const previous = this.mutations.get(key);
+    if (previous)
+      return previous.fingerprint === fingerprint
+        ? previous.result
+        : { ok: false, code: 'STASH_INVALID_DATA' };
+    const result = this.performMutation(target, request).catch((): PageMutationResult => ({
+      ok: false,
+      code: 'STASH_IO_ERROR',
+    }));
+    this.mutations.set(key, { fingerprint, result });
+    const value = await result;
+    if (!value.ok) this.mutations.delete(key);
+    if (this.mutations.size > 256) this.mutations.delete(this.mutations.keys().next().value!);
+    return value;
+  }
+
+  private async performMutation(
+    target: PageTarget,
+    request: PageMutation,
+  ): Promise<PageMutationResult> {
+    try {
+      let action: PageAction;
+      if (request.action.op === 'note') {
+        const input = request.action;
+        const path = memoryPath(input.path, true);
+        if (!path.startsWith('/notes/'))
+          return { ok: false, code: 'STASH_INVALID_DATA', field: 'path' };
+        const data = await this.read(target);
+        const previous = data.files[input.scope].find((file) => file.path === path);
+        if (input.expected === null && previous)
+          return { ok: false, code: 'STASH_ALREADY_EXISTS', field: 'path' };
+        if (input.expected !== null && previous?.revision !== input.expected)
+          return { ok: false, code: 'STASH_STALE_READ' };
+        action = {
+          op: 'save',
+          scope: input.scope,
+          path,
+          expected: input.expected,
+          content: mergeNoteForm(previous?.content ?? null, input.value),
+        };
+      } else action = request.action;
+      return await this.apply(target, action);
+    } catch (cause) {
+      if (cause instanceof StashError) {
+        const detail = cause.detail;
+        return {
+          ok: false,
+          code: cause.code,
+          ...(detail?.kind === 'note-field' ? { field: detail.field } : {}),
+          ...(detail?.kind === 'invalid-path' || detail?.kind === 'path-case'
+            ? { field: 'path' }
+            : {}),
+          ...(detail?.kind === 'rules-budget' ? { used: detail.used, limit: detail.limit } : {}),
+        };
+      }
+      return {
+        ok: false,
+        code:
+          cause instanceof Error && /busy|maintenance|running/iu.test(cause.message)
+            ? 'STASH_BUSY'
+            : 'STASH_IO_ERROR',
+      };
+    }
+  }
+
+  private async apply(
+    target: PageTarget,
+    action: PageAction,
+  ): Promise<Extract<PageMutationResult, { ok: true }>> {
     if (action.op === 'switches') {
       const current = await this.read(target);
       if (!this.adapter.config.enabled)
@@ -127,7 +227,7 @@ export class MemoryPage {
       );
       for (const agent of this.adapter.ctx.agents.list())
         await this.adapter.syncRegistration(agent, (await this.adapter.policy(agent)).enabled);
-      return this.read(target);
+      return { ok: true, scope: action.scope, file: null, cleared: false };
     }
     if ((action.op === 'save' || action.op === 'clear') && action.scope === 'workspace') {
       const current = await this.read(target);
@@ -141,9 +241,18 @@ export class MemoryPage {
       if (action.op === 'clear')
         await this.adapter.store.clear(current.workspaceId, action.expected);
       else await editor.editFromPage(action.path, action.content, action.expected);
-      return this.read(target);
+      return {
+        ok: true,
+        scope: 'workspace',
+        file:
+          action.op === 'save' && action.content !== null
+            ? pageFile(action.path, action.content)
+            : null,
+        cleared: action.op === 'clear',
+      };
     }
     return this.withTarget(target, async (id, agent) => {
+      let file: PageFile | null = null;
       const change = async () => {
         const memory = new WorkspaceMemory(
           this.adapter.store,
@@ -161,14 +270,12 @@ export class MemoryPage {
             const destination = memoryPath(action.destination, true);
             if (!path.startsWith('/notes/') || !destination.startsWith('/notes/'))
               throw new StashError('STASH_INVALID_DATA', '只能提升笔记');
-            const file = await local.store.read(agent.id, path);
-            if (!file || file.revision !== action.expected)
+            const source = await local.store.read(agent.id, path);
+            if (!source || source.revision !== action.expected)
               throw new StashError('STASH_STALE_READ', '原笔记已变化');
-            await memory.editFromPage(
-              destination,
-              promoteNote(file.content, 'dsh://session/' + agent.id + path),
-              null,
-            );
+            const content = promoteNote(source.content, 'dsh://session/' + agent.id + path);
+            await memory.editFromPage(destination, content, null);
+            file = pageFile(destination, content);
           } else {
             if (!agent || !local) throw new StashError('STASH_INVALID_DATA', '需要当前会话');
             if (!agent.session.snapshotEvents().some((event) => event.type === 'system/message'))
@@ -218,7 +325,14 @@ export class MemoryPage {
       };
       if (agent) await agent.runMaintenance(change);
       else await change();
-      return this.data(id, agent);
+      if (action.op === 'save' && action.content !== null)
+        file = pageFile(action.path, action.content);
+      return {
+        ok: true,
+        scope: action.op === 'promote' ? 'workspace' : 'session',
+        file,
+        cleared: action.op === 'clear',
+      };
     });
   }
 }

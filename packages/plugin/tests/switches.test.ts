@@ -1,4 +1,5 @@
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Context } from '@deepseek-ai/cordis';
@@ -19,6 +20,47 @@ import { FileTraceSink } from '../src/adapters/trace.ts';
 import { mountHistoryHost } from './history-host.ts';
 
 const cleanup: (() => Promise<void>)[] = [];
+
+it('结构化编辑提供字段错误和独立回执，重试不重复创建且保留元信息', async () => {
+  const { page, target, adapter } = await fixture();
+  const value = {
+    type: 'lesson',
+    description: '保存位置 — 图形选择和直接输入保持一致',
+    body: '正文',
+    index: true,
+    status: null,
+    sources: ['dsh://session/s'],
+  };
+  const action = {
+    op: 'note' as const,
+    scope: 'workspace' as const,
+    path: '/notes/dev/a.md',
+    expected: null,
+    value,
+  };
+  expect(
+    await page.mutate(target, {
+      id: randomUUID(),
+      action: { ...action, value: { ...value, description: '' } },
+    }),
+  ).toMatchObject({ ok: false, field: 'description' });
+  const request = { id: randomUUID(), action };
+  const saved = await page.mutate(target, request);
+  expect(saved).toMatchObject({ ok: true, file: { path: action.path, note: { form: value } } });
+  expect(await page.mutate(target, request)).toEqual(saved);
+  const data = await page.read(target);
+  expect(await adapter.store.journal(data.workspaceId)).toHaveLength(1);
+  expect(await page.mutate(target, { id: randomUUID(), action })).toMatchObject({
+    ok: false,
+    code: 'STASH_ALREADY_EXISTS',
+  });
+  expect(
+    await page.mutate(target, {
+      id: randomUUID(),
+      action: { ...action, expected: '0'.repeat(64) },
+    }),
+  ).toMatchObject({ ok: false, code: 'STASH_STALE_READ' });
+});
 
 afterEach(async () => {
   for (const close of cleanup.splice(0)) await close();

@@ -14,3 +14,4 @@ export * from './commits.ts';
 export * from './templates/history.ts';
 
 export * from './switches.ts';
+export * from './note-form.ts';

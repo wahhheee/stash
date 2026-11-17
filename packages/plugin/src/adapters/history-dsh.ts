@@ -124,6 +124,10 @@ export class DshHistory implements HistoryPort, WorkspacePort {
 
   async memorySnapshot(id: string) {
     return this.inspect(id, (session) => ({
+      title: (() => {
+        const event = session.snapshotEvents().findLast((event) => event.type === 'session/title');
+        return event?.type === 'session/title' ? redact(event.data.title) : '';
+      })(),
       started: session.snapshotEvents().some((event) => event.type === 'system/message'),
       files: commitFiles(
         this.memoryProjection?.stateOf(session) ?? foldSession(session.snapshotEvents()),

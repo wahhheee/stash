@@ -10,8 +10,14 @@ import { StashError } from '@wahhheee/stash-core';
 import manifest from '../../package.json' with { type: 'json' };
 import { MemoryAdapter } from './memory-dsh.ts';
 import { MemoryPage } from './memory-page.ts';
-import { targetSchema, actionSchema } from './page-schema.ts';
-import type { PageTarget, PageAction, MemoryPageData } from '../page-types.ts';
+import { targetSchema, actionSchema, mutationSchema } from './page-schema.ts';
+import type {
+  PageTarget,
+  PageAction,
+  MemoryPageData,
+  PageMutation,
+  PageMutationResult,
+} from '../page-types.ts';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -125,6 +131,11 @@ export class StashService extends TypertRemoteService {
   @Remote
   async changeMemory(target: PageTarget, action: PageAction): Promise<MemoryPageData> {
     return this.page.change(targetSchema.parse(target), actionSchema.parse(action));
+  }
+
+  @Remote
+  async mutateMemory(target: PageTarget, request: PageMutation): Promise<PageMutationResult> {
+    return this.page.mutate(targetSchema.parse(target), mutationSchema.parse(request));
   }
 
   /** 从宿主完整日志定位消息所属轮次，客户端不依赖已加载的聊天窗口。 */

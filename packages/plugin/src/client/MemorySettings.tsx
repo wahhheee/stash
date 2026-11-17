@@ -111,7 +111,7 @@ export function QuickMemory({
   pending,
   update,
   openPage,
-  refresh,
+  retry,
   message,
   t,
 }: {
@@ -119,7 +119,7 @@ export function QuickMemory({
   pending: boolean;
   update: (value: SwitchRecord) => void;
   openPage: (() => boolean) | undefined;
-  refresh: () => void;
+  retry: (() => void) | undefined;
   message: string;
   t: Translate;
 }) {
@@ -152,10 +152,10 @@ export function QuickMemory({
     if (!data.globalEnabled) items.push({ type: 'label', id: 'globalOff', text: t('globalOff') });
   } else items.push({ type: 'label', id: 'loading', text: message || t('loadingMemory') });
   if (message && data) items.push({ type: 'label', id: 'message', text: message });
+  if (retry) items.push({ id: 'retry', label: t('retry'), disabled: pending });
   items.push(
     { type: 'separator', id: 'separator' },
     { id: 'open', label: t('memory') + ' · ' + t('preferences'), disabled: !openPage },
-    { id: 'refresh', label: t('refreshMemory'), disabled: pending },
   );
   return (
     <>
@@ -173,7 +173,7 @@ export function QuickMemory({
         onSelect={(id) => {
           if (id === 'open') {
             if (openPage?.()) setOpen(false);
-          } else if (id === 'refresh') refresh();
+          } else if (id === 'retry') retry?.();
           else if (data) {
             if (id === 'discoverable' || id === 'inheritWorkspace')
               update({ ...data.session, [id]: !data.session[id] });

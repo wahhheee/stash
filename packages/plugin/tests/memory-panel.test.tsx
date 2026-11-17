@@ -419,12 +419,22 @@ function quickMenu() {
   fireEvent.click(screen.getByRole('button', { name: 'stash · 记忆' }));
 }
 
-it('快捷菜单刷新显示等待和完成，防止重复请求，刷新失败后可重试', async () => {
-  const { data, load } = fixture({}, { compact: true });
+it('快捷菜单仅在读取失败时显示重试，重试成功或自动恢复后移除入口', async () => {
+  const { data, load, mutate, reset } = fixture({}, { compact: true });
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'stash · 记忆' }).textContent).toContain('开'),
   );
   quickMenu();
+  expect(screen.queryByRole('menuitem', { name: zh.refreshMemory })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: zh.retry })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: zh.discoverable }));
+  await waitFor(() => expect(screen.getByRole('status').textContent).toBe(zh.saved));
+  expect(mutate).toHaveBeenCalledOnce();
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(data.session.discoverable).toBe(false);
+  load.mockRejectedValueOnce(new Error('offline'));
+  act(reset);
+  await waitFor(() => expect(screen.getByRole('status').textContent).toBe(zh.loadFailed));
   let finish!: (value: MemoryPageData) => void;
   load.mockImplementationOnce(
     () =>
@@ -432,20 +442,23 @@ it('快捷菜单刷新显示等待和完成，防止重复请求，刷新失败�
         finish = resolve;
       }),
   );
-  const refresh = screen.getByRole('menuitem', { name: zh.refreshMemory });
-  fireEvent.click(refresh);
+  const retry = screen.getByRole('menuitem', { name: zh.retry });
+  fireEvent.click(retry);
   expect(screen.getByRole('status').textContent).toBe(zh.loadingMemory);
-  expect((refresh as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(refresh);
-  expect(load).toHaveBeenCalledTimes(2);
+  expect((retry as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(retry);
+  expect(load).toHaveBeenCalledTimes(4);
   await act(async () => finish({ ...data, effective: { ...data.effective, enabled: false } }));
-  expect(screen.getByRole('status').textContent).toBe(zh.refreshedMemory);
+  expect(screen.getByRole('status').textContent).toBe('');
+  expect(screen.queryByRole('menuitem', { name: zh.retry })).toBeNull();
   expect(screen.getByRole('button', { name: 'stash · 记忆' }).textContent).toContain('关');
   load.mockRejectedValueOnce(new Error('offline'));
-  fireEvent.click(refresh);
+  act(reset);
   await waitFor(() => expect(screen.getByRole('status').textContent).toBe(zh.loadFailed));
-  fireEvent.click(refresh);
-  await waitFor(() => expect(screen.getByRole('status').textContent).toBe(zh.refreshedMemory));
+  expect(screen.getByRole('menuitem', { name: zh.retry })).toBeDefined();
+  act(reset);
+  await waitFor(() => expect(screen.queryByRole('menuitem', { name: zh.retry })).toBeNull());
+  expect(screen.getByRole('button', { name: 'stash · 记忆' }).textContent).toContain('开');
 });
 
 it('快捷设置打开失败时保留菜单并显示反馈，重试成功才关闭', async () => {
@@ -460,6 +473,7 @@ it('快捷设置打开失败时保留菜单并显示反馈，重试成功才关�
   const open = screen.getByRole('menuitem', { name: zh.memory + ' · ' + zh.preferences });
   fireEvent.click(open);
   expect(screen.getByRole('status').textContent).toBe(zh.openMemoryFailed);
+  expect(screen.queryByRole('menuitem', { name: zh.retry })).toBeNull();
   expect(screen.getByRole('button', { name: 'stash · 记忆' }).getAttribute('aria-expanded')).toBe(
     'true',
   );

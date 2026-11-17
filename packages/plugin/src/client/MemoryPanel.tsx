@@ -387,7 +387,14 @@ export function MemoryPanel({
               }
             : undefined
         }
-        refresh={() => void refresh(false, true)}
+        retry={
+          issue?.channel === 'load'
+            ? () => {
+                setNotice('');
+                void refresh();
+              }
+            : undefined
+        }
         message={loading ? t('loadingMemory') : (issue?.message ?? notice)}
         t={t}
       />

@@ -47,7 +47,15 @@ function MemoryTab({
 
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const unmount = await ctx.remote.$mount(remote);
-  const ui = ctx.inject(['remote.stash', 'slots', 'locale', 'sidebarRightTabs'], (scope) => {
+  const services = [
+    'remote.stash',
+    'slots',
+    'locale',
+    'sidebarRightTabs',
+    'sidebarRight',
+    'uiWorkspace',
+  ];
+  const ui = ctx.inject(services, (scope) => {
     scope.effect(() => scope.locale.register('stash', { en, zh }), 'stash: locale');
     const t = scope.locale.bind('stash');
     scope.slots.inject('conversation.chat.assistant-actions', () =>
@@ -145,10 +153,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       identity: id,
       cache,
       openPage: () =>
-        scope.sidebarRight?.openTab('stash', {
+        scope.sidebarRight.openTab('stash', {
           params: { scope: 'session', section: 'preferences' },
         }),
-      openSession: (sessionId: string) => scope.uiWorkspace?.openSession(sessionId as SessionId),
+      openSession: (sessionId: string) => scope.uiWorkspace.openSession(sessionId as SessionId),
       load: async () => {
         const result = await scope.remote.stash.getMemory({ kind: 'session', id });
         if (!result.ok) throw result.error;

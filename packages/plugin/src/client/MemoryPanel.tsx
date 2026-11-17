@@ -120,15 +120,17 @@ export function MemoryPanel({
     setDraft(next);
   };
   const refresh = useCallback(
-    async (saved = false) => {
+    async (saved = false, feedback = false) => {
       const token = ++generation.current;
       setLoading(true);
+      if (feedback) setNotice('');
       try {
         const value = await load();
         if (!live.current || token !== generation.current) return;
         setData(value);
         setIssue((old) => (old?.channel === 'load' ? null : old));
         if (current.current.draft?.dirty && !saved) setNotice(t('latestAvailable'));
+        else if (feedback) setNotice(t('refreshedMemory'));
       } catch {
         if (live.current && token === generation.current)
           setIssue({ channel: 'load', message: t(saved ? 'savedRefreshFailed' : 'loadFailed') });
@@ -369,11 +371,24 @@ export function MemoryPanel({
     return (
       <QuickMemory
         data={data}
-        pending={Boolean(pending)}
+        pending={Boolean(pending) || loading}
         update={(value) => void updateSettings(value, 'session')}
-        openPage={openPage ?? (() => {})}
-        refresh={() => void refresh()}
-        message={issue?.message ?? notice}
+        openPage={
+          openPage
+            ? () => {
+                try {
+                  openPage();
+                  setIssue((old) => (old?.channel === 'navigation' ? null : old));
+                  return true;
+                } catch {
+                  setIssue({ channel: 'navigation', message: t('openMemoryFailed') });
+                  return false;
+                }
+              }
+            : undefined
+        }
+        refresh={() => void refresh(false, true)}
+        message={loading ? t('loadingMemory') : (issue?.message ?? notice)}
         t={t}
       />
     );
@@ -407,7 +422,7 @@ export function MemoryPanel({
           <Button
             size="sm"
             disabled={Boolean(pending) || loading}
-            onClick={() => void refresh()}
+            onClick={() => void refresh(false, true)}
             aria-label={t('refreshMemory')}
           >
             {t('refresh')}

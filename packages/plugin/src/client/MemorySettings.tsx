@@ -118,7 +118,7 @@ export function QuickMemory({
   data: MemoryPageData | undefined;
   pending: boolean;
   update: (value: SwitchRecord) => void;
-  openPage: () => void;
+  openPage: (() => boolean) | undefined;
   refresh: () => void;
   message: string;
   t: Translate;
@@ -154,48 +154,52 @@ export function QuickMemory({
   if (message && data) items.push({ type: 'label', id: 'message', text: message });
   items.push(
     { type: 'separator', id: 'separator' },
-    { id: 'open', label: t('memory') + ' · ' + t('preferences') },
+    { id: 'open', label: t('memory') + ' · ' + t('preferences'), disabled: !openPage },
     { id: 'refresh', label: t('refreshMemory'), disabled: pending },
   );
   return (
-    <Menu
-      open={open}
-      portal
-      autoFocus
-      side="top"
-      items={items}
-      selectedIds={selected}
-      onClose={() => setOpen(false)}
-      onSelect={(id) => {
-        if (id === 'open') {
-          setOpen(false);
-          openPage();
-        } else if (id === 'refresh') refresh();
-        else if (data) {
-          if (id === 'discoverable' || id === 'inheritWorkspace')
-            update({ ...data.session, [id]: !data.session[id] });
-          else {
-            const [key, value] = id.split(':');
-            if (key === 'enabled' || key === 'writable')
-              update({ ...data.session, [key]: value === 'inherit' ? null : value === 'true' });
+    <>
+      <span role="status" className={styles.quickAnnouncement}>
+        {message}
+      </span>
+      <Menu
+        open={open}
+        portal
+        autoFocus
+        side="top"
+        items={items}
+        selectedIds={selected}
+        onClose={() => setOpen(false)}
+        onSelect={(id) => {
+          if (id === 'open') {
+            if (openPage?.()) setOpen(false);
+          } else if (id === 'refresh') refresh();
+          else if (data) {
+            if (id === 'discoverable' || id === 'inheritWorkspace')
+              update({ ...data.session, [id]: !data.session[id] });
+            else {
+              const [key, value] = id.split(':');
+              if (key === 'enabled' || key === 'writable')
+                update({ ...data.session, [key]: value === 'inherit' ? null : value === 'true' });
+            }
           }
+        }}
+        anchor={
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={'stash · ' + t('memory')}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            stash{' '}
+            <span className={styles.quickState}>
+              {data ? t(data.effective.enabled ? 'on' : 'off') : '…'}
+            </span>
+          </Button>
         }
-      }}
-      anchor={
-        <Button
-          size="sm"
-          variant="toolbar"
-          aria-label={'stash · ' + t('memory')}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          stash{' '}
-          <span className={styles.quickState}>
-            {data ? t(data.effective.enabled ? 'on' : 'off') : '…'}
-          </span>
-        </Button>
-      }
-    />
+      />
+    </>
   );
 }

@@ -1,4 +1,7 @@
+import { memoryEn, memoryZh } from './memory-locales.ts';
+
 export const en = {
+  ...memoryEn,
   sessionNotStarted:
     'Send the first message before editing session memory. Switches and workspace editing are available now.',
   memory: 'Memory',
@@ -60,6 +63,7 @@ export const en = {
 };
 
 export const zh: typeof en = {
+  ...memoryZh,
   sessionNotStarted: '发送第一条消息后即可编辑会话记忆；开关和工作区编辑现在就可使用。',
   memory: '记忆',
   workspace: '工作区',

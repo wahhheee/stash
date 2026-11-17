@@ -31,6 +31,8 @@ await build({
   outDir: 'lib',
   format: 'cjs',
   platform: 'browser',
+  // classic 加载器使用 CJS 包装，但依赖必须按浏览器条件解析。
+  inputOptions: { platform: 'browser' },
   target: 'es2022',
   clean: false,
   fixedExtension: false,

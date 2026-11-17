@@ -23,8 +23,8 @@ const scope = z.enum(['workspace', 'session']);
 
 export const noteFormSchema = z
   .object({
-    type: z.string().max(256),
-    description: z.string().max(32768),
+    type: z.string(),
+    description: z.string(),
     body: z.string().max(32 * 1024 * 1024),
     index: z.boolean(),
     status: z.string().nullable(),

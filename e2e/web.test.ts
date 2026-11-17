@@ -8,7 +8,11 @@ import { readReport } from '../packages/plugin/src/adapters/diagnostics.ts';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_SWITCHES } from '../packages/core/src/index.ts';
-import type { MemoryPageData, PageAction } from '../packages/plugin/src/page-types.ts';
+import type {
+  MemoryPageData,
+  PageAction,
+  PageMutationResult,
+} from '../packages/plugin/src/page-types.ts';
 import { reconcile } from '../packages/devtools/src/reconcile.ts';
 import { join } from 'node:path';
 
@@ -67,6 +71,52 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         invoke<MemoryPageData>('stash/changeMemory', { target, action });
       const initial = await invoke<MemoryPageData>('stash/getMemory', { target });
       expect(initial.files.session).toEqual([]);
+      const request = {
+        id: randomUUID(),
+        action: {
+          op: 'note',
+          scope: 'workspace',
+          path: '/notes/ui/permission.md',
+          expected: null,
+          value: {
+            type: 'fact',
+            description:
+              'Memory page permissions — Read-only restricts model writes; users can still edit rules and notes.',
+            body: 'Details remain in the body.',
+            index: true,
+            status: null,
+            sources: [],
+          },
+        },
+      };
+      const created = await invoke<PageMutationResult>('stash/mutateMemory', { target, request });
+      expect(created).toMatchObject({
+        ok: true,
+        scope: 'workspace',
+        file: {
+          path: request.action.path,
+          note: { form: { description: request.action.value.description } },
+        },
+      });
+      expect(await invoke('stash/mutateMemory', { target, request })).toEqual(created);
+      expect(
+        await invoke('stash/mutateMemory', {
+          target,
+          request: {
+            ...request,
+            id: randomUUID(),
+            action: {
+              ...request.action,
+              path: '/notes/ui/invalid.md',
+              value: { ...request.action.value, description: '' },
+            },
+          },
+        }),
+      ).toMatchObject({ ok: false, code: 'STASH_INVALID_DATA', field: 'description' });
+      const edited = await invoke<MemoryPageData>('stash/getMemory', { target });
+      expect(
+        edited.files.workspace.filter((file) => file.path === request.action.path),
+      ).toHaveLength(1);
       await change({
         op: 'save',
         scope: 'workspace',

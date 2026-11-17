@@ -2,12 +2,15 @@ import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-api-remotes/client';
 import type {} from '@deepseek-ai/dsh-client-locale/client';
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
+import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import remote from '../adapters/remote.ts';
 import { en, zh } from './locales.ts';
 import { MemoryPanel } from './MemoryPanel.tsx';
 import type { MemoryPanelProps } from './MemoryPanel.tsx';
-import type { PageAction } from '../page-types.ts';
+import type { PageMutation } from '../page-types.ts';
+import { createMemoryCache } from './memory-state.ts';
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client';
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
@@ -16,7 +19,30 @@ import { CopyReference, referenceLink } from './CopyReference.tsx';
 export const inject = ['remote', 'slots', 'locale', 'sidebarRightTabs'];
 
 function MemorySeat({ identity, ...props }: MemoryPanelProps & { identity: string }) {
-  return <MemoryPanel key={identity} {...props} />;
+  return <MemoryPanel key={identity} identity={identity} {...props} />;
+}
+
+declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
+  interface SidebarRightTabParamsMap {
+    stash: { scope: 'workspace' | 'session'; section: 'notes' | 'rules' | 'preferences' };
+  }
+}
+
+function MemoryTab({
+  useTabInfo,
+  ...props
+}: MemoryPanelProps & { identity: string; useTabInfo: UseSidebarRightTabInfo }) {
+  const { tab } = useTabInfo();
+  const params = tab.navigation.params;
+  const navigation =
+    params &&
+    'scope' in params &&
+    'section' in params &&
+    (params.scope === 'workspace' || params.scope === 'session') &&
+    (params.section === 'notes' || params.section === 'rules' || params.section === 'preferences')
+      ? { scope: params.scope, section: params.section, revision: tab.navigation.revision }
+      : undefined;
+  return <MemorySeat {...props} navigation={navigation} />;
 }
 
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
@@ -75,7 +101,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                 label: t('settings'),
                 run: async () => {
                   await menus.uiWorkspace.openWorkspace(workspaceId);
-                  menus.sidebarRight.openTab('stash');
+                  menus.sidebarRight.openTab('stash', {
+                    params: { scope: 'workspace', section: 'preferences' },
+                  });
                 },
               },
             ],
@@ -96,6 +124,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       'stash: tab',
     );
     const listeners = new Set<() => void>();
+    const cache = createMemoryCache();
+    scope.effect(
+      () => () => {
+        cache.views.clear();
+        cache.drafts.clear();
+        cache.navigation.clear();
+      },
+      'stash: memory drafts',
+    );
     const subscribeReset = (listener: () => void) => {
       listeners.add(listener);
       const dispose = scope.on('connection/reset', listener);
@@ -106,15 +143,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     };
     const injectMemory = (id: string) => ({
       identity: id,
+      cache,
+      openPage: () =>
+        scope.sidebarRight?.openTab('stash', {
+          params: { scope: 'session', section: 'preferences' },
+        }),
+      openSession: (sessionId: string) => scope.uiWorkspace?.openSession(sessionId as SessionId),
       load: async () => {
         const result = await scope.remote.stash.getMemory({ kind: 'session', id });
         if (!result.ok) throw result.error;
         return result.value;
       },
-      change: async (action: PageAction) => {
-        const result = await scope.remote.stash.changeMemory({ kind: 'session', id }, action);
+      mutate: async (request: PageMutation) => {
+        const result = await scope.remote.stash.mutateMemory({ kind: 'session', id }, request);
         if (!result.ok) throw result.error;
-        for (const listener of listeners) listener();
+        if (result.value.ok) for (const listener of listeners) listener();
         return result.value;
       },
       subscribeReset,
@@ -139,7 +182,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           locale: 'stash',
           inject: injectMemory,
         },
-        MemorySeat,
+        MemoryTab,
       ),
     );
   });

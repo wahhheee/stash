@@ -20,6 +20,8 @@ import type { Translate } from './memory-controls.tsx';
 import { MemoryLocation, displayPath, notePath } from './MemoryLocation.tsx';
 import { NoteEditor } from './NoteEditor.tsx';
 import { NoteBadges, NoteContent } from './NoteContent.tsx';
+import { MaintenancePanel } from './MaintenancePanel.tsx';
+import type { MaintenanceCall } from './MaintenancePanel.tsx';
 import { MemorySettings, QuickMemory } from './MemorySettings.tsx';
 import {
   createMemoryCache,
@@ -47,6 +49,7 @@ export interface MemoryPanelProps {
   navigation?: { scope: MemoryScope; section: MemorySection; revision: number } | undefined;
   openPage?: (() => void) | undefined;
   openSession?: ((id: string) => void) | undefined;
+  maintenance?: MaintenanceCall;
   compact?: boolean;
 }
 
@@ -66,6 +69,7 @@ export function MemoryPanel({
   navigation,
   openPage,
   openSession,
+  maintenance,
   compact = false,
 }: MemoryPanelProps): ReactNode {
   const localCache = useRef(createMemoryCache());
@@ -81,6 +85,7 @@ export function MemoryPanel({
   const { scope, section, path } = view;
   const [data, setData] = useState<MemoryPageData>();
   const [draft, setDraft] = useState<MemoryDraft | null>(null);
+  const [healthRefresh, setHealthRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState('');
   const [issue, setIssue] = useState<Issue | null>(null);
@@ -123,7 +128,10 @@ export function MemoryPanel({
     async (saved = false, feedback = false) => {
       const token = ++generation.current;
       setLoading(true);
-      if (feedback) setNotice('');
+      if (feedback) {
+        setNotice('');
+        setHealthRefresh((n) => n + 1);
+      }
       try {
         const value = await load();
         if (!live.current || token !== generation.current) return;
@@ -503,6 +511,15 @@ export function MemoryPanel({
           <>
             {!editable && section !== 'preferences' && (
               <p className={styles.notice}>{t('sessionNotStarted')}</p>
+            )}
+            {section === 'preferences' && scope === 'workspace' && maintenance && (
+              <MaintenancePanel
+                call={maintenance}
+                refreshKey={healthRefresh}
+                enabled={data.effective.enabled && data.effective.inheritWorkspace}
+                openSession={openSession}
+                t={t}
+              />
             )}
             {section === 'preferences' && (
               <MemorySettings

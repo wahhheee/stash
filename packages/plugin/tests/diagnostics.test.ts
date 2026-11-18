@@ -59,6 +59,8 @@ describe('诊断基础设施', () => {
     const config = {
       enabled: true,
       subagentWrite: false,
+      unreadDays: 90,
+      maintenanceModel: '',
       rulesBudgetTokens: 1600,
       indexBudgetTokens: 1600,
       viewBudgetTokens: 4000,
@@ -78,7 +80,7 @@ describe('诊断基础设施', () => {
     const checks = await doctor(config, '0.2.2-rc.3');
     expect(checks.every((c) => c.ok)).toBe(true);
     const report = await readReport(await writeReport(config, '0.1.0', '0.2.2-rc.3', checks));
-    expect(report.phase).toBe(5);
+    expect(report.phase).toBe(6);
     expect(report.trace).toHaveLength(1);
     expect(report.trace[0]).not.toHaveProperty('content');
     expect(JSON.stringify(report)).not.toContain('a'.repeat(30));
@@ -109,6 +111,8 @@ describe('诊断基础设施', () => {
     const config = {
       enabled: true,
       subagentWrite: false,
+      unreadDays: 90,
+      maintenanceModel: '',
       rulesBudgetTokens: 1600,
       indexBudgetTokens: 1600,
       viewBudgetTokens: 4000,

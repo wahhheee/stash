@@ -1,3 +1,4 @@
+import { gateway } from './gateway.ts';
 import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import hostManifest from '@deepseek-ai/dsh/package.json' with { type: 'json' };
@@ -27,38 +28,9 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
       DEEPSEEK_BASE_URL: mock.baseURL,
     });
     try {
-      const exchange = await fetch(host.url, { redirect: 'manual' });
-      const cookie = exchange.headers
-        .getSetCookie()
-        .map((value) => value.split(';')[0])
-        .join('; ');
-      expect(cookie).not.toBe('');
-      const origin = new URL(host.url).origin;
-      const page = await fetch(origin, { headers: { cookie } });
-      const html = await page.text();
-      expect(html).toContain('@wahhheee/dsh-stash');
-      const invoke = async <T>(method: string, args: Record<string, unknown>): Promise<T> => {
-        const response = await fetch(origin + '/api/' + method, {
-          method: 'POST',
-          headers: { cookie, 'content-type': 'application/json' },
-          body: JSON.stringify({
-            type: 'client-request',
-            rpcId: method,
-            method,
-            payload: { args },
-          }),
-        });
-        expect(response.status).toBe(200);
-        const envelope = (await response.json()) as {
-          type: string;
-          result: { ok: boolean; value: T };
-        };
-        expect(envelope.type).toBe('server-response');
-        expect(envelope.result.ok, JSON.stringify(envelope)).toBe(true);
-        return envelope.result.value;
-      };
+      const invoke = await gateway(host.url);
       expect(await invoke('stash/getStatus', {})).toMatchObject({
-        version: '0.5.0',
+        version: '0.6.0',
         hostVersion: hostManifest.version,
         memoryEnabled: true,
       });
@@ -194,7 +166,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         });
       expect((await execute('/stash status')).result).toMatchObject({
         kind: 'success',
-        text: expect.stringContaining('stash 0.5.0'),
+        text: expect.stringContaining('stash 0.6.0'),
       });
       const bundle = await execute('/stash doctor --bundle');
       expect(bundle.result.kind).toBe('success');

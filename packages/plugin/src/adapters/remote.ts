@@ -1,3 +1,5 @@
+import { maintenanceActionSchema, maintenanceDataSchema } from './maintenance-schema.ts';
+import type { MaintenanceAction, MaintenanceData } from './maintenance-schema.ts';
 import { z } from 'zod';
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
@@ -37,7 +39,7 @@ export const StatusSchema: z.ZodType<StashStatus> = z
   .object({
     version: z.string(),
     hostVersion: z.string(),
-    phase: z.literal(5),
+    phase: z.literal(6),
     memoryEnabled: z.boolean(),
     trace: z.enum(['off', 'metadata', 'content']),
   })
@@ -48,6 +50,19 @@ export const TYPERT_REMOTE = createTypertRemoteInfo(
   {
     package: '@wahhheee/dsh-stash',
     methods: {
+      'stash/maintenance': {
+        service: 'stash',
+        invocation: { kind: 'direct' },
+        parameters: [
+          parameter('target', 'PageTarget', targetSchema),
+          parameter('action', 'MaintenanceAction', maintenanceActionSchema),
+        ],
+        result: {
+          mode: 'strict',
+          typeSymbol: 'MaintenanceData',
+          create: () => maintenanceDataSchema,
+        },
+      },
       'stash/mutateMemory': {
         service: 'stash',
         invocation: { kind: 'direct' },
@@ -111,6 +126,11 @@ export default TYPERT_REMOTE;
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespaceMap {
     stash: {
+      maintenance(
+        target: PageTarget,
+        action: MaintenanceAction,
+      ): Promise<RemoteResult<MaintenanceData>>;
+
       getMemory(target: PageTarget): Promise<RemoteResult<MemoryPageData>>;
       changeMemory(target: PageTarget, action: PageAction): Promise<RemoteResult<MemoryPageData>>;
 

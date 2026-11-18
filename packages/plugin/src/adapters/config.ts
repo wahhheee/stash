@@ -9,6 +9,8 @@ export interface Config {
   trace?: TraceLevel;
   traceRetentionDays?: number;
   memoryRoot?: string;
+  unreadDays?: number;
+  maintenanceModel?: string;
   rulesBudgetTokens?: number;
   indexBudgetTokens?: number;
   viewBudgetTokens?: number;
@@ -27,6 +29,8 @@ export const Config: Schema<Config> = Schema.object({
     .max(365)
     .default(7)
     .description('Trace 保留天数（UTC 日历日）。'),
+  unreadDays: Schema.number().step(1).min(1).max(3650).default(90).description('长期未读的天数。'),
+  maintenanceModel: Schema.string().description('整理会话的模型 ID，沿用发起会话的提供商。'),
   memoryRoot: Schema.string().description('记忆根目录；相对路径以 DSH_HOME 为基准。'),
   rulesBudgetTokens: Schema.number()
     .step(1)
@@ -57,6 +61,8 @@ export interface ResolvedConfig {
   trace: TraceLevel;
   traceRetentionDays: number;
   memoryRoot: string;
+  unreadDays: number;
+  maintenanceModel: string;
   rulesBudgetTokens: number;
   indexBudgetTokens: number;
   viewBudgetTokens: number;
@@ -77,6 +83,8 @@ export function resolveConfig(input: Config = {}): ResolvedConfig {
     viewBudgetTokens: config.viewBudgetTokens ?? 4000,
     externalRuleUpdates: config.externalRuleUpdates ?? 'next-request',
     traceRetentionDays: config.traceRetentionDays ?? 7,
+    unreadDays: config.unreadDays ?? 90,
+    maintenanceModel: config.maintenanceModel?.trim() ?? '',
     memoryRoot: isAbsolute(expanded) ? expanded : resolve(home, expanded),
   };
 }

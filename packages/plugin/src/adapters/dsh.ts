@@ -1,3 +1,5 @@
+import { maintenanceActionSchema } from './maintenance-schema.ts';
+import type { MaintenanceAction, MaintenanceData } from './maintenance-schema.ts';
 import { createRequire } from 'node:module';
 import type { Context } from '@deepseek-ai/cordis';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
@@ -58,7 +60,7 @@ export class StashService extends TypertRemoteService {
           name: 'stash',
           description: 'stash 状态与诊断',
           input: {
-            hint: 'status | context | render | explain [n] | doctor [--bundle] | trace off|metadata|content',
+            hint: 'health | rollback <整理会话> | status | context | render | explain [n] | doctor [--bundle] | trace off|metadata|content',
           },
           recordInput: false,
           handler: async (invocation) => {
@@ -121,6 +123,11 @@ export class StashService extends TypertRemoteService {
   @Remote
   getStatus(): StashStatus {
     return this.runtime.status();
+  }
+
+  @Remote
+  async maintenance(target: PageTarget, action: MaintenanceAction): Promise<MaintenanceData> {
+    return this.page.maintenance(targetSchema.parse(target), maintenanceActionSchema.parse(action));
   }
 
   @Remote

@@ -18,7 +18,7 @@ export class StashRuntime {
     return {
       version: this.version,
       hostVersion: this.hostVersion,
-      phase: 5,
+      phase: 6,
       memoryEnabled: this.config.enabled,
       trace: this.trace.getLevel(),
     };
@@ -35,7 +35,7 @@ export class StashRuntime {
         text: [
           'stash ' + this.version,
           'DSH ' + this.hostVersion,
-          '阶段：5（开关与记忆页）',
+          '阶段：6（增长与整理）',
           'memoryRoot: ' + this.config.memoryRoot,
           'trace: ' + this.trace.getLevel(),
         ].join('\n'),
@@ -86,7 +86,7 @@ export class StashRuntime {
     }
     return {
       kind: 'error',
-      text: '用法：/stash status | doctor [--bundle] | trace off|metadata|content',
+      text: '用法：/stash status | context | render | explain [n] | health | rollback <整理会话> | doctor [--bundle] | trace off|metadata|content',
     };
   }
 }

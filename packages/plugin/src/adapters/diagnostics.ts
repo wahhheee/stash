@@ -61,7 +61,14 @@ export const ReportSchema = z
     createdAt: z.iso.datetime(),
     version: z.string(),
     hostVersion: z.string(),
-    phase: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+    phase: z.union([
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+      z.literal(6),
+    ]),
     config: z
       .object({
         trace: z.enum(['off', 'metadata', 'content']),
@@ -69,6 +76,8 @@ export const ReportSchema = z
         subagentWrite: z.boolean().optional(),
         traceRetentionDays: z.number().int().min(1).max(365),
         memoryRoot: z.string(),
+        unreadDays: z.number().optional(),
+        maintenanceModel: z.string().optional(),
         rulesBudgetTokens: z.number().optional(),
         indexBudgetTokens: z.number().optional(),
         viewBudgetTokens: z.number().optional(),
@@ -135,6 +144,7 @@ export async function inspectRoot(root: string): Promise<Check[]> {
     try {
       if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('工作区必须为普通目录');
       await store.validateWorkspace(entry.name);
+      await store.verifyMaintenance(entry.name);
       const journal = await store.journal(entry.name);
       const files = await store.snapshot(entry.name, true);
       composeResident(files, { estimate: (text) => Math.ceil(text.length / 4) }, 1600);
@@ -251,7 +261,7 @@ export async function writeReport(
     createdAt: new Date().toISOString(),
     version,
     hostVersion,
-    phase: 5,
+    phase: 6,
     config,
     checks,
     trace: trace.slice(-200),

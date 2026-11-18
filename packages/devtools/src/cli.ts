@@ -2,7 +2,15 @@ import { foldLog } from './fold.ts';
 import { resolve, dirname, basename } from 'node:path';
 import { inspectRoot, readReport } from '../../plugin/src/adapters/diagnostics.ts';
 import { FileMemoryStore } from '../../plugin/src/adapters/memory-store.ts';
-import { composeResident, fullContext, GUIDE, memoryPath, parseNote } from '@wahhheee/stash-core';
+import {
+  resolveRedirect,
+  redirectNotice,
+  composeResident,
+  fullContext,
+  GUIDE,
+  memoryPath,
+  parseNote,
+} from '@wahhheee/stash-core';
 import { offlineMeter, reconcile } from './reconcile.ts';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -90,9 +98,10 @@ try {
               .join('\n'),
           );
         else {
-          const text = files.get(path);
+          const to = resolveRedirect(path, await store.aliases(id));
+          const text = files.get(to);
           if (text === undefined) throw new Error('文件不存在');
-          console.log(text);
+          console.log((to !== path ? redirectNotice(path, to) : '') + text);
         }
       }
     }

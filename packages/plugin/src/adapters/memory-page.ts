@@ -1,3 +1,7 @@
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { maintenancePrompt } from '@wahhheee/stash-core';
+import { inspectMaintenance, validatePlan } from '../host/maintenance.ts';
+import type { MaintenanceData, MaintenanceAction } from './maintenance-schema.ts';
 import { randomUUID } from 'node:crypto';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { SessionId } from '@deepseek-ai/dsh-session';
@@ -82,6 +86,72 @@ export class MemoryPage {
     } finally {
       await handle?.dispose();
     }
+  }
+
+  async maintenance(target: PageTarget, action: MaintenanceAction): Promise<MaintenanceData> {
+    return this.withTarget(target, async (id, agent) => {
+      const workspace = this.adapter.ctx.workspaceRegistry.list().find((w) => w.id === id)!;
+      const { store, meter, config } = this.adapter;
+      const inspect = () => inspectMaintenance(store, id, workspace.path, meter, config);
+      const state = await inspect();
+      const validate = (files: ReadonlyMap<string, string>) => validatePlan(files, meter, config);
+      let review: MaintenanceData['review'] = null,
+        started: string | null = null;
+      if (action.op === 'start') {
+        if (!agent) throw new StashError('STASH_INVALID_DATA', '请从当前会话发起整理');
+        const policy = await this.adapter.policy(agent);
+        if (!policy.enabled || !policy.inheritWorkspace)
+          throw new StashError('STASH_DISABLED', '请先启用工作区记忆');
+        const route = agent.model.current();
+        if (!route) throw new StashError('STASH_INVALID_DATA', '当前会话没有模型路由');
+        const { health } = state;
+        const local =
+          (await this.adapter.switches.get({ kind: 'session', id: agent.id })) ?? DEFAULT_SWITCHES;
+        const group = SessionId('stash-maint-' + action.requestId);
+        if (state.runs.some((r) => r.id === group))
+          return { ...state, review: null, started: group };
+        const handle = await this.adapter.ctx.agents.create({
+          sessionId: group,
+          meta: { cwd: workspace.path },
+          agentOptions: { ...route, model: config.maintenanceModel || route.model },
+        });
+        try {
+          await workspace.attachSession(group);
+          await this.adapter.switches.set(
+            { kind: 'session', id: group },
+            { ...local, writable: false },
+          );
+          await store.startPlan(id, group);
+          handle.agent.followup(
+            createUserMessage({
+              content: [{ type: 'text', text: maintenancePrompt(health) }],
+              source: { kind: 'user' },
+            }),
+          );
+          started = group;
+        } catch (error) {
+          await handle.dispose();
+          throw error;
+        }
+      } else if (action.op === 'rollback') await store.rollback(id, action.id, validate);
+      else if (action.op === 'review' || action.op === 'apply') {
+        const result = await store.plan(
+          id,
+          action.id,
+          action.op === 'review'
+            ? { kind: 'review' }
+            : { kind: 'apply', revision: action.revision, confirmed: action.confirmed },
+          validate,
+        );
+        if (action.op === 'review') review = result;
+      }
+      // 返回已知的提交结果；后续读取失败不能把已经发生的动作伪装成失败。
+      if (started) state.runs.push({ id: started, status: 'planning' });
+      if (action.op === 'apply' || action.op === 'rollback')
+        for (const row of state.runs)
+          if (row.id === action.id) row.status = action.op === 'apply' ? 'applied' : 'reverted';
+      return { ...state, review, started };
+    });
   }
 
   async read(target: PageTarget): Promise<MemoryPageData> {

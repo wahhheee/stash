@@ -493,3 +493,31 @@
     font-size: 17px;
   }
 }
+.maintenance {
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.maintenance dl > div {
+  padding-block: 3px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.maintenance dd {
+  font-variant-numeric: tabular-nums;
+}
+.maintenance article,
+.maintenance details,
+.maintenance label {
+  display: block;
+  margin-block: 12px;
+}
+.maintenance pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24em;
+  overflow: auto;
+}
+.maintenance summary {
+  cursor: pointer;
+}

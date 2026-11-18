@@ -1,3 +1,6 @@
+import { isMaintenance, stepsSchema, runId } from './maintenance-schema.ts';
+import { inspectMaintenance, validatePlan } from '../host/maintenance.ts';
+import { PLAN_ONLY, PLAN_SAVED, PLAN_TOOL, MAINTENANCE_GUIDE } from '@wahhheee/stash-core';
 import { DshSwitchStore } from './switches.ts';
 import { DEFAULT_SWITCHES, resolveSwitches } from '@wahhheee/stash-core';
 import type { Context } from '@deepseek-ai/cordis';
@@ -304,6 +307,47 @@ export class MemoryAdapter {
     };
     const scoped = agent.ctx.plugin({
       apply: (scope) => {
+        const planner = isMaintenance(agent.id);
+        if (planner) {
+          scope.tools.restrict({ allow: [] });
+          scope.tools.guard((exec) =>
+            ['memory_view', 'stash_plan', 'run_code'].includes(exec.name) ? undefined : PLAN_ONLY,
+          );
+          scope.tools.register(
+            {
+              ...PLAN_TOOL,
+              output: {
+                schema: { type: 'string' },
+                render: (_args, value) => [{ type: 'text', text: String(value) }],
+              },
+              execute: async (args) =>
+                this.boundary(async () => {
+                  const policy = await this.policy(agent);
+                  if (!policy.enabled || !policy.inheritWorkspace)
+                    throw new StashError('STASH_DISABLED', '工作区记忆未启用');
+                  const input = z
+                    .object({ steps: z.string().max(4 * 1024 * 1024) })
+                    .strict()
+                    .parse(args);
+                  let raw: unknown;
+                  try {
+                    raw = JSON.parse(input.steps);
+                  } catch {
+                    throw new StashError('STASH_INVALID_DATA', '整理计划不是 JSON');
+                  }
+                  const memory = await this.memory(agent);
+                  await this.store.plan(
+                    memory.workspaceId,
+                    agent.id,
+                    { kind: 'propose', steps: stepsSchema.parse(raw), seen: memory.corpusRevision },
+                    (files) => validatePlan(files, this.meter, this.config),
+                  );
+                  return PLAN_SAVED;
+                }),
+            },
+            activation,
+          );
+        }
         scope.on('tools/result', (exec, result) => {
           this.sessionMemories
             .get(agent)
@@ -315,7 +359,9 @@ export class MemoryAdapter {
           order: 100,
           text: ({ toolSet }) =>
             (toolSet ? toolSet.view(agent).has('memory_view') : this.initialEnabled.get(agent))
-              ? INSTRUCTIONS
+              ? planner
+                ? MAINTENANCE_GUIDE
+                : INSTRUCTIONS
               : '',
         });
         scope.tools.register(
@@ -330,6 +376,15 @@ export class MemoryAdapter {
                 if (!(await this.policy(agent)).enabled)
                   throw new StashError('STASH_DISABLED', '记忆已关闭');
                 const input = viewSchema.parse(args);
+                if (
+                  planner &&
+                  ((!['/', '/RULES.md', '/.guide.md', '/notes'].includes(input.path) &&
+                    !input.path.startsWith('/notes/')) ||
+                    !(await this.policy(agent)).inheritWorkspace)
+                )
+                  throw new StashError('STASH_READ_ONLY', '只能读取工作区', {
+                    kind: 'maintenance-only',
+                  });
                 const memory = await this.memory(agent);
                 const target = sessionMemoryTarget(input.path, agent.id);
                 if (target?.writable) {
@@ -382,97 +437,98 @@ export class MemoryAdapter {
                   throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径', {
                     kind: 'history-options',
                   });
-                return memory.view(input.path, input.cursor);
+                return memory.view(input.path, input.cursor, input.path, planner);
               }),
           },
           activation,
         );
-        scope.tools.register(
-          {
-            ...WRITE_TOOL,
-            output: {
-              schema: {
-                type: 'object',
-                properties: {
-                  text: { type: 'string' },
-                  stash: { type: 'object', additionalProperties: true },
-                  stashCommit: { type: 'object', additionalProperties: true },
+        if (!planner)
+          scope.tools.register(
+            {
+              ...WRITE_TOOL,
+              output: {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    text: { type: 'string' },
+                    stash: { type: 'object', additionalProperties: true },
+                    stashCommit: { type: 'object', additionalProperties: true },
+                  },
+                  required: ['text', 'stash'],
+                  additionalProperties: false,
                 },
-                required: ['text', 'stash'],
-                additionalProperties: false,
+                render: (_args, value) => [
+                  { type: 'text', text: z.object({ text: z.string() }).parse(value).text },
+                ],
+                presentationMeta: (_args, value) => value,
               },
-              render: (_args, value) => [
-                { type: 'text', text: z.object({ text: z.string() }).parse(value).text },
-              ],
-              presentationMeta: (_args, value) => value,
+              execute: async (args, exec) =>
+                this.boundary(async () => {
+                  exec.signal.throwIfAborted();
+                  const policy = await this.policy(agent);
+                  if (!policy.enabled) throw new StashError('STASH_DISABLED', '记忆已关闭');
+                  if (!policy.writable)
+                    throw new StashError('STASH_READ_ONLY', '记忆只读', {
+                      kind: 'read-only',
+                      reason: 'policy',
+                    });
+                  if (agent.session.header.origin === 'subagent' && !this.config.subagentWrite)
+                    throw new StashError('STASH_READ_ONLY', '子代理只读', {
+                      kind: 'read-only',
+                      reason: 'subagent',
+                    });
+                  const input = parseWriteInput(args);
+                  const memory = await this.memory(agent);
+                  const believed = foldResident(visibleRecords(agent), memory.workspaceId);
+                  const target = sessionMemoryTarget(input.path, agent.id);
+                  if (target && !target.writable)
+                    throw new StashError('STASH_READ_ONLY', '其他会话只读', {
+                      kind: 'read-only',
+                      reason: 'sibling',
+                    });
+                  if (!target && historyTarget(input.path, agent.id))
+                    throw new StashError('STASH_READ_ONLY', '历史记录只读', {
+                      kind: 'read-only',
+                      reason: 'history',
+                    });
+                  const session = await this.sessionMemory(agent);
+                  session.store.begin(exec.rootCallId);
+                  const result = target
+                    ? await session.memory.write(
+                        { ...input, path: target.path },
+                        exec.callId,
+                        believed?.session?.rules ?? null,
+                      )
+                    : await memory.write(input, exec.callId, believed?.rules ?? null);
+                  const text = target
+                    ? sessionWriteResult(result.text, target.path, input.op)
+                    : result.text;
+                  const state = target
+                    ? await this.actual(agent, await memory.actual())
+                    : await this.actual(agent, result.state);
+                  const stash: ResidentRecord = {
+                    v: 1,
+                    workspaceId: memory.workspaceId,
+                    kind: 'write',
+                    scope: target ? 'session' : 'workspace',
+                    state,
+                    // 嵌套调用的参数未必进入模型可见结果，按保守补发处理。
+                    trusted: result.trusted && !exec.parent,
+                  };
+                  const commit = target ? session.store.lastCommit() : undefined;
+                  if (exec.parent && commit) exec.deferContext(commitMessage(commit, text));
+                  if (exec.parent && !commit)
+                    exec.deferContext(
+                      createUserMessage({
+                        content: [{ type: 'text', text }],
+                        source: { kind: 'stash-memory', form: 'instructions', stash },
+                      }),
+                    );
+                  return { text, stash, ...(commit ? { stashCommit: commit } : {}) };
+                }),
             },
-            execute: async (args, exec) =>
-              this.boundary(async () => {
-                exec.signal.throwIfAborted();
-                const policy = await this.policy(agent);
-                if (!policy.enabled) throw new StashError('STASH_DISABLED', '记忆已关闭');
-                if (!policy.writable)
-                  throw new StashError('STASH_READ_ONLY', '记忆只读', {
-                    kind: 'read-only',
-                    reason: 'policy',
-                  });
-                if (agent.session.header.origin === 'subagent' && !this.config.subagentWrite)
-                  throw new StashError('STASH_READ_ONLY', '子代理只读', {
-                    kind: 'read-only',
-                    reason: 'subagent',
-                  });
-                const input = parseWriteInput(args);
-                const memory = await this.memory(agent);
-                const believed = foldResident(visibleRecords(agent), memory.workspaceId);
-                const target = sessionMemoryTarget(input.path, agent.id);
-                if (target && !target.writable)
-                  throw new StashError('STASH_READ_ONLY', '其他会话只读', {
-                    kind: 'read-only',
-                    reason: 'sibling',
-                  });
-                if (!target && historyTarget(input.path, agent.id))
-                  throw new StashError('STASH_READ_ONLY', '历史记录只读', {
-                    kind: 'read-only',
-                    reason: 'history',
-                  });
-                const session = await this.sessionMemory(agent);
-                session.store.begin(exec.rootCallId);
-                const result = target
-                  ? await session.memory.write(
-                      { ...input, path: target.path },
-                      exec.callId,
-                      believed?.session?.rules ?? null,
-                    )
-                  : await memory.write(input, exec.callId, believed?.rules ?? null);
-                const text = target
-                  ? sessionWriteResult(result.text, target.path, input.op)
-                  : result.text;
-                const state = target
-                  ? await this.actual(agent, await memory.actual())
-                  : await this.actual(agent, result.state);
-                const stash: ResidentRecord = {
-                  v: 1,
-                  workspaceId: memory.workspaceId,
-                  kind: 'write',
-                  scope: target ? 'session' : 'workspace',
-                  state,
-                  // 嵌套调用的参数未必进入模型可见结果，按保守补发处理。
-                  trusted: result.trusted && !exec.parent,
-                };
-                const commit = target ? session.store.lastCommit() : undefined;
-                if (exec.parent && commit) exec.deferContext(commitMessage(commit, text));
-                if (exec.parent && !commit)
-                  exec.deferContext(
-                    createUserMessage({
-                      content: [{ type: 'text', text }],
-                      source: { kind: 'stash-memory', form: 'instructions', stash },
-                    }),
-                  );
-                return { text, stash, ...(commit ? { stashCommit: commit } : {}) };
-              }),
-          },
-          activation,
-        );
+            activation,
+          );
       },
     });
     this.ctx.effect(() => () => scoped.dispose(), 'stash: agent memory');
@@ -575,6 +631,34 @@ export class MemoryAdapter {
     raw: string,
   ): Promise<{ kind: 'success' | 'error'; text: string } | null> {
     const args = raw.trim().split(/\s+/u);
+    if (args[0] === 'health' || args[0] === 'rollback') {
+      if (
+        args[0] === 'health'
+          ? args.length !== 1
+          : args.length !== 2 || !runId.safeParse(args[1]).success
+      )
+        return { kind: 'error', text: '用法：/stash health | /stash rollback <整理会话 ID>' };
+      const memory = await this.memory(agent);
+      if (args[0] === 'rollback') {
+        await this.store.rollback(memory.workspaceId, args[1]!, (files) =>
+          validatePlan(files, this.meter, this.config),
+        );
+        return { kind: 'success', text: '已回滚整理：' + args[1] };
+      }
+      const { health: h, runs } = await inspectMaintenance(
+        this.store,
+        memory.workspaceId,
+        agent.session.header.cwd!,
+        this.meter,
+        this.config,
+      );
+      return {
+        kind: 'success',
+        text:
+          `工作区笔记：${h.notes}；${h.unreadDays} 天未读：${h.unread}；上次整理后新增：${h.added}\n索引折叠：${h.folded}；规则预算：${h.rulesUsed}/${h.rulesLimit} tokens\n核实提交与 HEAD 不同：${h.verifiedDifferent}；无法比较：${h.verifiedUnknown}\n` +
+          runs.map((r) => r.id + ' · ' + r.status).join('\n'),
+      };
+    }
     if (!['context', 'render', 'explain', 'status'].includes(args[0]!)) return null;
     if (args[0] === 'status') {
       if (args.length !== 1) return null;

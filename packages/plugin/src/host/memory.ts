@@ -5,6 +5,10 @@ import {
   parseNote,
   archiveNote,
   GUIDE,
+  maintenanceCorpus,
+  redirectNotice,
+  FOLD_HINT,
+  renderIndex,
   viewResult,
   writeResult,
   budgetDetail,
@@ -18,13 +22,20 @@ import type {
   WriteInput,
 } from '@wahhheee/stash-core';
 import type { FileMemoryStore } from '../adapters/memory-store.ts';
-import { digest } from '../adapters/memory-store.ts';
+import { digest, snapshotRevision } from '../adapters/memory-store.ts';
 import { containsSecret } from '../adapters/redaction.ts';
 
-export type MemoryBackend = Pick<FileMemoryStore, 'observe' | 'snapshot' | 'read' | 'transact'>;
+export type MemoryBackend = Pick<FileMemoryStore, 'observe' | 'snapshot' | 'read' | 'transact'> &
+  Partial<Pick<FileMemoryStore, 'readNote' | 'recordRead'>>;
 
 /** 读取凭据只存在于当前 agent；完整连续读完才允许覆盖。 */
 export class WorkspaceMemory {
+  private corpusRead: string | null = null;
+
+  get corpusRevision() {
+    return this.corpusRead;
+  }
+
   private readonly reads = new Map<string, string>();
   private readonly cursors = new Map<string, { path: string; revision: string; offset: number }>();
 
@@ -59,33 +70,48 @@ export class WorkspaceMemory {
     return (await this.observe()).state;
   }
 
-  async view(path: string, cursor?: string, displayPath = path): Promise<string> {
+  async view(path: string, cursor?: string, displayPath = path, corpus = false): Promise<string> {
     memoryPath(path);
     let text: string;
     let file = false;
+    let canonical = path;
+    let prefix = '';
+    let corpusBase: string | null = null;
     if (path === '/.guide.md') text = GUIDE;
     else if (path === '/' || path === '/notes' || path.endsWith('/')) {
       const files = await this.store.snapshot(this.workspaceId);
-      text = [...files]
-        .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
-        .map(
-          ([p, content]) =>
-            (displayPath.startsWith('./') ? '.' + p : p) +
-            (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
-        )
-        .join('\n');
+      if (corpus && path === '/notes/') {
+        if (!cursor) this.corpusRead = null;
+        corpusBase = snapshotRevision(files);
+        text = maintenanceCorpus(files);
+      } else
+        text = [...files]
+          .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
+          .map(
+            ([p, content]) =>
+              (displayPath.startsWith('./') ? '.' + p : p) +
+              (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
+          )
+          .join('\n');
     } else {
-      const value = await this.store.read(this.workspaceId, path);
+      const read =
+        path.startsWith('/notes/') && this.store.readNote
+          ? await this.store.readNote(this.workspaceId, path)
+          : { path, file: await this.store.read(this.workspaceId, path) };
+      const value = read.file;
+      canonical = read.path;
+      if (canonical !== path) prefix = redirectNotice(path, canonical);
       if (!value) throw new StashError('STASH_NOT_FOUND', '文件不存在');
       text = value.content;
       file = true;
     }
     if (containsSecret(text)) throw new StashError('STASH_SECRET', '文件包含凭据');
     const revision = digest(text);
+    const tokenHash = digest(JSON.stringify([path, canonical, revision]));
     let offset = 0;
     if (cursor) {
       const progress = this.cursors.get(cursor);
-      if (!progress || progress.path !== path || progress.revision !== revision)
+      if (!progress || progress.path !== path || progress.revision !== tokenHash)
         throw new StashError('STASH_STALE_READ', '续读标识已失效', {
           kind: 'cursor',
           scope: 'memory',
@@ -94,8 +120,9 @@ export class WorkspaceMemory {
     } else this.reads.delete(path);
     let end = text.length;
     const fits = (n: number) =>
-      this.meter.estimate(viewResult(displayPath, text.slice(offset, n), revision + ':' + n)) <=
-      this.config.viewBudgetTokens;
+      this.meter.estimate(
+        viewResult(displayPath, prefix + text.slice(offset, n), tokenHash + ':' + n),
+      ) <= this.config.viewBudgetTokens;
     if (!fits(end)) {
       let low = offset,
         high = end;
@@ -112,12 +139,17 @@ export class WorkspaceMemory {
         });
     }
     if (end < text.length) {
-      const next = revision + ':' + end;
-      this.cursors.set(next, { path, revision, offset: end });
-      return viewResult(displayPath, text.slice(offset, end), next);
+      const next = tokenHash + ':' + end;
+      this.cursors.set(next, { path, revision: tokenHash, offset: end });
+      return viewResult(displayPath, prefix + text.slice(offset, end), next);
     }
-    if (file) this.reads.set(path, revision);
-    return viewResult(displayPath, text.slice(offset));
+    if (corpusBase !== null) this.corpusRead = corpusBase;
+    if (file) {
+      if (canonical.startsWith('/notes/'))
+        await this.store.recordRead?.(this.workspaceId, canonical, revision);
+      if (path === canonical) this.reads.set(path, revision);
+    }
+    return viewResult(displayPath, prefix + text.slice(offset));
   }
 
   async write(
@@ -193,6 +225,15 @@ export class WorkspaceMemory {
           )
             trusted = false;
         }
+        let wasFolded = true;
+        if (!this.indexPrefix && path.startsWith('/notes/')) {
+          try {
+            wasFolded = renderIndex(files, this.meter, this.config.indexBudgetTokens).folded;
+          } catch (error) {
+            // 损坏的旧笔记没有可比较的索引，但仍允许修复；最终状态照常严格校验。
+            if (!(error instanceof StashError) || error.code !== 'STASH_INVALID_DATA') throw error;
+          }
+        }
         if (content === null) files.delete(path);
         else files.set(path, content);
         const state = composeResident(
@@ -221,7 +262,9 @@ export class WorkspaceMemory {
         return {
           content,
           value: {
-            text: writeResult(path, used, this.config.rulesBudgetTokens, removed, input.op),
+            text:
+              writeResult(path, used, this.config.rulesBudgetTokens, removed, input.op) +
+              (!wasFolded && state.folded ? '\n' + FOLD_HINT : ''),
             state,
             trusted,
           },

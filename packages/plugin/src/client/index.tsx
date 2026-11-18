@@ -9,6 +9,7 @@ import remote from '../adapters/remote.ts';
 import { en, zh } from './locales.ts';
 import { MemoryPanel } from './MemoryPanel.tsx';
 import type { MemoryPanelProps } from './MemoryPanel.tsx';
+import type { MaintenanceAction } from '../adapters/maintenance-schema.ts';
 import type { PageMutation } from '../page-types.ts';
 import { createMemoryCache } from './memory-state.ts';
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client';
@@ -166,6 +167,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         const result = await scope.remote.stash.mutateMemory({ kind: 'session', id }, request);
         if (!result.ok) throw result.error;
         if (result.value.ok) for (const listener of listeners) listener();
+        return result.value;
+      },
+      maintenance: async (action: MaintenanceAction) => {
+        const result = await scope.remote.stash.maintenance({ kind: 'session', id }, action);
+        if (!result.ok) throw result.error;
+        if (action.op === 'apply' || action.op === 'rollback')
+          for (const listener of listeners) listener();
         return result.value;
       },
       subscribeReset,

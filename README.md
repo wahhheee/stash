@@ -1,6 +1,6 @@
 # stash
 
-DSH 工作区记忆插件。当前版本 0.5.0 提供工作区与会话规则、笔记读写和分叉继承、常驻上下文、压缩后恢复、原始记录检索、引用复制、三级开关、记忆编辑页和离线重放。
+DSH 工作区记忆插件。当前版本 0.6.0 提供工作区与会话规则、笔记读写和分叉继承、常驻上下文、压缩后恢复、原始记录检索、引用复制、三级开关、记忆编辑页、增长指标、工作区整理与回滚、离线重放。
 
 ## 开发
 
@@ -45,7 +45,7 @@ Desktop：在“插件 → 添加插件”中输入 packages/plugin 的绝对目
 
 ```sh
 pnpm --dir packages/plugin pack --pack-destination ../..
-pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.5.0.tgz
+pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.6.0.tgz
 ```
 
 尚未发布 npm 包。唯一分发包为 @wahhheee/dsh-stash；core 和 devtools 均为私有工作区包。
@@ -70,6 +70,14 @@ pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.5.0.tgz
 只读限制模型，不限制用户在页面编辑。保存校验加载时的版本；冲突时可对照最新内容，再选择放弃草稿或保留草稿继续编辑。断线或会话忙碌时保留草稿，保存成功后的刷新失败单独提示。页内切换提供保存、放弃和继续编辑；切换宿主会话或重新打开侧栏时，未保存草稿在当前插件实例内保留，重载插件或刷新浏览器后不保留。空白会话可编辑工作区与开关，首次请求后开放会话记忆编辑，原因见[阶段五决策](docs/decisions/0005-switches-memory-page.md)。
 
 清空本会话记忆和删除工作区记忆均需二次确认。只删除当前规则和笔记，保留原始会话、已有分叉、设置及修改历史；不擦除历史副本。工作区批量删除发生故障时可能部分完成，刷新后可继续。
+
+## 增长与整理
+
+- 在记忆页选择 **工作区 → 设置 → 工作区整理**，或输入 `/stash health`。健康指标是提示，不会自动归档、删除或调用模型。`unreadDays` 默认 90 天；核实提交与 HEAD 不同不等于结论过时。
+- 点击 **启动整理会话** 才会发起模型请求。可以在插件配置中设置 `maintenanceModel`；未设置时沿用发起会话的模型。整理会话分页读取工作区规则与所有笔记，只能提交计划，不能直接改记忆。
+- 在工作区设置中刷新整理列表，点 **审阅改动**，对照原文、拟写内容和旧路径去向。规则（包括 `@notes/` 导入的正文）的有效行变化要逐条勾选，最后确认整份计划。工作区或计划变了则需重新生成或审阅。
+- 合并与移动保留旧路径跳转；读旧路径不会获得新路径的写权限。拆分保留原路径和来源；归档保留文件并退出索引。
+- 可在同一页面回滚，或运行 `/stash rollback <整理会话 ID>`。若该组改过的路径有后续修改，会拒绝整组回滚，不覆盖人工编辑。回滚恢复文件及跳转，不删除会话记录或修改历史。
 
 ## 工作区记忆
 
@@ -143,6 +151,6 @@ pnpm devtools verify /path/to/stash-report.json.gz
 - [工程设计](docs/design.md)、[调试手册](docs/debugging.md)、[开发约定](AGENTS.md)。
 - [目标设计](docs/roadmap-design.md)、[阶段规划](docs/roadmap-plan.md)仅描述规划；[阶段二决策记录](docs/decisions/0002-workspace-memory.md)记录实际差异与收尾取舍。
 
-记忆按 DSH 工作区共享。可以对模型说“以后提交信息用简体中文”，由 memory_write 保存到 /RULES.md。笔记位于 /notes/，可用 memory_view 阅读。完整读取后才能覆盖或删除；工具写入和已观察到的外部编辑都有修改历史。开关和记忆页已提供，整理与回滚尚未提供。
+记忆按 DSH 工作区共享。可以对模型说“以后提交信息用简体中文”，由 memory_write 保存到 /RULES.md。笔记位于 /notes/，可用 memory_view 阅读。完整读取后才能覆盖或删除；工具写入和已观察到的外部编辑都有修改历史。整理执行与回滚同样保留修改历史。
 
 MIT License。

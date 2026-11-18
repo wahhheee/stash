@@ -1,6 +1,6 @@
-# stash 0.5.0 工程设计
+# stash 0.6.0 工程设计
 
-stash 是 DSH 外部插件，提供工作区与会话规则及笔记、分叉继承、常驻上下文、原始历史查询与引用、三级开关、记忆编辑页、诊断和离线重放。整理回滚尚未实现。长期设计见 [目标设计](roadmap-design.md)。
+stash 是 DSH 外部插件，提供工作区与会话规则及笔记、分叉继承、常驻上下文、原始历史查询与引用、三级开关、记忆编辑页、诊断、增长指标、按计划整理与整组回滚，以及离线重放。长期设计见 [目标设计](roadmap-design.md)。
 
 ## 分层
 
@@ -106,17 +106,19 @@ mutateMemory 返回独立写入回执或结构化错误；成功后客户端先�
 
 ## 配置
 
-| 配置                | 默认            | 说明                            |
-| ------------------- | --------------- | ------------------------------- |
-| enabled             | true            | 全局记忆开关，宿主配置重载生效  |
-| subagentWrite       | false           | 放开子代理写入工作区与自身会话  |
-| memoryRoot          | DSH_HOME/memory | 绝对路径、相对 DSH_HOME 或 ~    |
-| rulesBudgetTokens   | 1600            | 128–32000，每层展开后的规则预算 |
-| indexBudgetTokens   | 1600            | 128–32000，每层索引预算         |
-| viewBudgetTokens    | 4000            | 256–64000，单次读取预算         |
-| externalRuleUpdates | next-request    | next-request / next-compaction  |
-| trace               | off             | off / metadata / content        |
-| traceRetentionDays  | 7               | 1–365 个 UTC 日历日             |
+| 配置                | 默认            | 说明                                       |
+| ------------------- | --------------- | ------------------------------------------ |
+| enabled             | true            | 全局记忆开关，宿主配置重载生效             |
+| subagentWrite       | false           | 放开子代理写入工作区与自身会话             |
+| memoryRoot          | DSH_HOME/memory | 绝对路径、相对 DSH_HOME 或 ~               |
+| rulesBudgetTokens   | 1600            | 128–32000，每层展开后的规则预算            |
+| indexBudgetTokens   | 1600            | 128–32000，每层索引预算                    |
+| unreadDays          | 90              | 1–3650，长期未读天数                       |
+| maintenanceModel    | 空              | 整理会话沿用发起方的提供商；空值沿用原模型 |
+| viewBudgetTokens    | 4000            | 256–64000，单次读取预算                    |
+| externalRuleUpdates | next-request    | next-request / next-compaction             |
+| trace               | off             | off / metadata / content                   |
+| traceRetentionDays  | 7               | 1–365 个 UTC 日历日                        |
 
 配置经 Schemastery 校验，变更由宿主重载生效。预算通过 ctx.tokenMeter.estimateMessage 扣除固定消息包装估算；锁定 DSH 的算法为每 4 个 UTF-16 码元约 1 token，并非模型精确分词。devtools 使用同一算法；离线 render 的预算使用默认值。
 
@@ -127,3 +129,13 @@ mutateMemory 返回独立写入回执或结构化错误；成功后客户端先�
 每个工作区保存 .decisions-<SessionId>.jsonl，每行 v: 1，仅包含请求前日志位置、修改日志版本 ID、配置、决策、正文哈希和压缩范围，没有正文。它独立于可关闭的 trace，用于精确离线重放；当前不自动清理。决策文件继续采用整体原子替换，每次写入校验已有记录；当前没有为它提供残缺尾部恢复。reconcile 用 DSH persistence 的 read 句柄读取日志，以 Session 重建各请求前的 surface，并从修改日志版本重建实际记忆，比较决策和实际注入文本。未发出模型请求的尝试单独标注。重放需要完整会话日志、工作区修改日志与决策记录；子代理还需其引用的父会话日志。阶段四决策含 sessionMemory 标志，兼容没有该字段的旧工作区决策。离线 fold 按提交输出每一步的文件状态。
 
 trace 按 UTC 日轮转；报告为 format: 1 gzip JSON，兼容阶段一报告，只包含检查结果、生效配置和 trace 元数据，不附记忆或会话正文。宿主验证基线为 0.2.2-rc.3，范围 >=0.2.2-rc.3 <0.3.0-0。升级依据见 [宿主升级决策](decisions/0003-dsh-rc3.md)。
+
+## 增长与整理
+
+`/stash health` 和工作区设置按工作区展示笔记总数、折叠状态、规则用量、长期未读、上次有效整理后新增、核实提交与 HEAD 不同及无法比较的数量。长期未读以最近一次完整的 `memory_view` 单篇读取时间为起点，没有读取记录时用首次观察到创建的时间。目录、半页、整理语料和离线读取不增加计数。`.stats.json` 的 v 为 1；创建与更新时间取自文件日志。索引从展开变为折叠时提示一次，保持折叠时不重复提示。
+
+整理会话只读当前工作区。专用的 `/notes/` 阅读视图包含未索引、归档笔记和规则，游标绑定内容；未完整读过当前快照不得提交计划。草稿 `.plan-<整理会话 ID>.json` 包含版本、身份、起始快照哈希和操作。插件负责构造最终文件与来源，不让模型直接覆盖 frontmatter。工作区记忆页显示前后全文，对实际展开后的规则逐行确认，再将具体计划版本交给宿主执行。用户级权限仅存在于人机界面和斜杠命令，不是模型工具。
+
+一次整理组的文件记录以 `group`（整理会话 ID）、`op` 和必要时的 `redirect` 标记，别名从日志折叠派生。提交前检查快照、路径、凭据、规则预算与日志容量，先持久化 `.batch.json`，再逐条沿用 `.pending.json` 协议。读写请求恢复中断批次；离线 verify 只报告，不修复。回滚追加反向记录，保留原始字节、来源、无关编辑及审计历史。规则仍由 `externalRuleUpdates` 决定投递时机，纯索引变动不打断其他会话。
+
+实现取舍与边界见[整理计划与回滚](decisions/0008-workspace-maintenance.md)。

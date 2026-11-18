@@ -20,6 +20,10 @@ export type StashErrorDetail =
   | { kind: 'workspace-unavailable'; reason: 'registry' | 'cwd' }
   | {
       kind:
+        | 'maintenance-read'
+        | 'maintenance-stale'
+        | 'maintenance-only'
+        | 'maintenance-alias'
         | 'history-options'
         | 'history-path'
         | 'invalid-path'

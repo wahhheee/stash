@@ -12,6 +12,14 @@ function errorDetail(detail: StashErrorDetail): string {
       if (detail.reason === 'sibling')
         return 'Other-session memory is read-only. No changes were made. Read it with memory_view; if needed and permitted, copy useful content to workspace or current-session memory with a source reference.';
       return 'Session history is read-only. No changes were made. Use memory_view to read or cite the original records.';
+    case 'maintenance-read':
+      return 'Read the workspace maintenance corpus with memory_view at /notes/, continuing its cursor until complete, then submit the plan.';
+    case 'maintenance-stale':
+      return 'The workspace or proposal changed. Do not apply the old plan; start a new planning session or review the current proposal in the memory page.';
+    case 'maintenance-only':
+      return 'This planning session only reads the current workspace. Use memory_view at /notes/ and submit a proposal with stash_plan.';
+    case 'maintenance-alias':
+      return 'The path is reserved by a merge. Read the old path to find the canonical note. Update that note directly; archive instead of deleting a redirect target.';
     case 'memory-path':
       return detail.writable
         ? 'Write a file at /RULES.md or /notes/<name>.md for the workspace, or ./RULES.md or ./notes/<name>.md for this session. Directories and /.guide.md are not writable. Agent write permissions still apply.'

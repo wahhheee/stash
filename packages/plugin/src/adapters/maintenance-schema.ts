@@ -34,15 +34,42 @@ export const stepsSchema: z.ZodType<PlanStep[]> = z
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/u);
 
-export const draftSchema = z
+const mode = z.enum(['review', 'auto']);
+export type MaintenanceMode = z.infer<typeof mode>;
+
+const draftFields = {
+  id: runId,
+  workspaceId: z.string(),
+  base: hash,
+  steps: stepsSchema.nullable(),
+};
+
+export const stageDraftSchema = z
   .object({
-    v: z.literal(1),
+    v: z.literal(3),
     id: runId,
     workspaceId: z.string(),
+    mode,
     base: hash,
-    steps: stepsSchema.nullable(),
+    working: hash,
+    generation: z.uuid(),
+    edited: z.boolean(),
+    submitted: hash.nullable(),
+    baselineAliases: z.array(z.tuple([path, path])),
+    redirects: z.array(z.tuple([path, path])),
   })
   .strict();
+
+export type StageDraft = z.infer<typeof stageDraftSchema>;
+
+export const draftSchema = z.union([
+  stageDraftSchema,
+  z
+    .object({ v: z.literal(1), ...draftFields })
+    .strict()
+    .transform((d) => ({ ...d, v: 2 as const, mode: 'review' as const })),
+  z.object({ v: z.literal(2), ...draftFields, mode }).strict(),
+]);
 
 export const statsSchema = z
   .object({
@@ -63,8 +90,9 @@ export const statsSchema = z
 
 export const maintenanceActionSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('inspect') }).strict(),
-  z.object({ op: z.literal('start'), requestId: z.uuid() }).strict(),
+  z.object({ op: z.literal('start'), requestId: z.uuid(), mode: mode.optional() }).strict(),
   z.object({ op: z.literal('review'), id: runId }).strict(),
+  z.object({ op: z.literal('discard'), id: runId }).strict(),
   z.object({ op: z.literal('rollback'), id: runId }).strict(),
   z
     .object({
@@ -121,7 +149,18 @@ export const maintenanceDataSchema = z
       z
         .object({
           id: runId,
-          status: z.enum(['planning', 'proposed', 'applied', 'reverted', 'stale']),
+          mode: mode.optional(),
+          archived: z.literal(true).optional(),
+          revision: hash.optional(),
+          status: z.enum([
+            'planning',
+            'editing',
+            'unchanged',
+            'proposed',
+            'applied',
+            'reverted',
+            'stale',
+          ]),
         })
         .strict(),
     ),

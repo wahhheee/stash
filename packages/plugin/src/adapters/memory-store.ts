@@ -1,10 +1,13 @@
 import { ledger } from './maintenance-ledger.ts';
 import type { Stats } from './maintenance-ledger.ts';
-import { runId, draftSchema, statsSchema, stepsSchema } from './maintenance-schema.ts';
+import { runId, draftSchema, statsSchema } from './maintenance-schema.ts';
+import type { MaintenanceMode, StageDraft } from './maintenance-schema.ts';
+import { fileChanges, editStage, stagePreview, validateStagePaths } from './stage-files.ts';
+import type { StageEdit } from './stage-files.ts';
 import { resolveRedirect, previewPlan, notePath } from '@wahhheee/stash-core';
-import type { PlanChange, PlanStep, PlanPreview } from '@wahhheee/stash-core';
+import type { PlanChange, PlanPreview } from '@wahhheee/stash-core';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, rename, rm, unlink, link } from 'node:fs/promises';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { z } from 'zod';
@@ -747,7 +750,13 @@ export class FileMemoryStore implements MemoryStore {
 
   async verifyMaintenance(id: string) {
     await this.checkBatch(id);
-    await this.catalog(id);
+    for (const d of await this.catalog(id))
+      if (d.v === 3) {
+        const trees = new FileMemoryStore(join(this.directory(id), '.staging', d.id));
+        await this.safe(trees.root);
+        await this.readTree(trees, d.base);
+        validateStagePaths(await this.readTree(trees, d.working), new Map(d.redirects));
+      }
     await this.stats(id);
     const aliases = await this.aliases(id);
     for (const [from, to] of aliases)
@@ -773,13 +782,25 @@ export class FileMemoryStore implements MemoryStore {
       const base = snapshotRevision(files);
       const runs = (await this.catalog(id)).map((d) => ({
         id: d.id,
+        mode: d.mode,
+        ...(d.v === 3 &&
+        d.submitted &&
+        d.working !== d.base &&
+        !state.groups.has(d.id) &&
+        base === d.base
+          ? { revision: d.submitted }
+          : {}),
         status:
           state.groups.get(d.id) ??
           (base !== d.base
             ? ('stale' as const)
-            : d.steps
-              ? ('proposed' as const)
-              : ('planning' as const)),
+            : d.v === 3 && d.submitted && d.working === d.base
+              ? ('unchanged' as const)
+              : (d.v === 3 ? d.submitted : d.steps)
+                ? ('proposed' as const)
+                : d.v === 3 && d.edited
+                  ? ('editing' as const)
+                  : ('planning' as const)),
       }));
       const notes = Object.fromEntries(state.usage);
       if (JSON.stringify(notes) !== JSON.stringify(stats.notes))
@@ -788,23 +809,195 @@ export class FileMemoryStore implements MemoryStore {
     });
   }
 
-  async startPlan(id: string, group: string) {
+  async startPlan(id: string, group: string, mode: MaintenanceMode = 'review') {
     await this.locked(id, async () => {
       await this.validateWorkspace(id);
       await this.recover(id);
       const path = this.draftPath(id, group);
       if ((await readOptional(path)) !== null)
         throw new StashError('STASH_ALREADY_EXISTS', '整理编号重复');
+      const base = await this.scan(id, true);
+      const draft = await this.createStage(id, group, mode, base);
+      await atomic(path, JSON.stringify(draft));
+    });
+  }
+
+  private async trees(id: string, group: string) {
+    const root = join(this.directory(id), '.staging', runId.parse(group));
+    await this.safe(root, true);
+    return new FileMemoryStore(root);
+  }
+
+  private async readTree(trees: FileMemoryStore, rev: string) {
+    const files = new Map<string, string>();
+    await trees.safe(trees.directory(rev));
+    if (!(await lstat(trees.directory(rev))).isDirectory())
+      throw new StashError('STASH_INVALID_DATA', '副本目录缺失');
+    for (const path of await trees.list(rev))
+      files.set(path, (await trees.read(rev, path))!.content);
+    if (snapshotRevision(files) !== rev)
+      throw new StashError('STASH_INVALID_DATA', '副本与版本不符');
+    return files;
+  }
+
+  private async saveTree(
+    trees: FileMemoryStore,
+    files: Map<string, string>,
+    previous?: { rev: string; files: Map<string, string> },
+  ) {
+    const rev = snapshotRevision(files),
+      destination = trees.directory(rev);
+    try {
+      await lstat(destination);
+      await this.readTree(trees, rev);
+      return rev;
+    } catch (error) {
+      if (!missing(error)) throw error;
+    }
+    const temp = randomUUID(),
+      dir = trees.directory(temp);
+    await trees.safe(dir, true);
+    try {
+      for (const [path, content] of files) {
+        if (previous?.files.get(path) === content) {
+          const target = join(dir, memoryPath(path, true).slice(1));
+          await trees.safe(dirname(target), true);
+          try {
+            await link(join(trees.directory(previous.rev), path.slice(1)), target);
+          } catch (error) {
+            // 不支持硬链接的文件系统仍可保存同样的独立副本。
+            if (
+              !['ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'EPERM', 'EMLINK'].includes(
+                (error as NodeJS.ErrnoException).code ?? '',
+              )
+            )
+              throw error;
+            await trees.replace(temp, path, content);
+          }
+        } else await trees.replace(temp, path, content);
+      }
+      await rename(dir, destination);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+    return rev;
+  }
+
+  private async createStage(
+    id: string,
+    group: string,
+    mode: MaintenanceMode,
+    files: Map<string, string>,
+  ): Promise<StageDraft> {
+    const trees = await this.trees(id, group);
+    const base = await this.saveTree(trees, files);
+    const baselineAliases = [...(await this.aliases(id))];
+    return {
+      v: 3,
+      id: group,
+      workspaceId: id,
+      mode,
+      base,
+      working: base,
+      generation: randomUUID(),
+      edited: false,
+      submitted: null,
+      baselineAliases,
+      redirects: baselineAliases,
+    };
+  }
+
+  // 旧草稿按原快照重建；无法证明基线一致时不以当前文件覆盖旧内容。
+  private async openStage(id: string, group: string) {
+    const old = await this.draft(id, group);
+    if (old.v === 3) return old;
+    const files = await this.scan(id, true);
+    if (snapshotRevision(files) !== old.base)
+      throw new StashError('STASH_STALE_READ', '旧草稿已过期', { kind: 'maintenance-stale' });
+    const stage = await this.createStage(id, group, old.mode, files);
+    if (old.steps) {
+      const aliases = new Map(stage.baselineAliases),
+        preview = previewPlan(files, old.steps, aliases);
+      for (const c of preview.changes) {
+        if (c.after === null) files.delete(c.path);
+        else files.set(c.path, c.after);
+        if (c.redirect) aliases.set(c.path, c.redirect);
+      }
+      stage.working = await this.saveTree(await this.trees(id, group), files);
+      stage.redirects = [...aliases];
+      stage.submitted = digest(JSON.stringify([stage.base, preview]));
+    }
+    await atomic(this.draftPath(id, group), JSON.stringify(stage));
+    return stage;
+  }
+
+  async stageSnapshot(id: string, group: string) {
+    return this.locked(id, async () => {
+      const d = await this.openStage(id, group);
+      return {
+        mode: d.mode,
+        files: await this.readTree(await this.trees(id, group), d.working),
+        generation: d.generation,
+        redirects: new Map(d.redirects),
+        base: d.base,
+      };
+    });
+  }
+
+  async stageDiff(id: string, group: string) {
+    return this.locked(id, async () => {
+      const d = await this.openStage(id, group),
+        trees = await this.trees(id, group);
+      const base = await this.readTree(trees, d.base),
+        working = await this.readTree(trees, d.working);
+      const aliases = new Map(d.redirects);
+      const changes = fileChanges(base, working).map((c) => ({
+        ...c,
+        redirect: aliases.has(c.path) ? resolveRedirect(c.path, aliases) : null,
+      }));
+      return { changes, generation: d.generation };
+    });
+  }
+
+  async editStage(
+    id: string,
+    group: string,
+    edit: StageEdit,
+    expected: string,
+    requireActive: () => void,
+  ) {
+    return this.locked(id, async () => {
+      await this.recover(id);
+      requireActive();
+      if (ledger((await this.loadJournal(id)).changes).groups.has(group))
+        throw new StashError('STASH_READ_ONLY', '整理已结束', { kind: 'maintenance-closed' });
+      const d = await this.openStage(id, group);
+      if (d.generation !== expected)
+        throw new StashError('STASH_STALE_READ', '请重新读取副本', { kind: 'maintenance-read' });
+      const trees = await this.trees(id, group),
+        previous = await this.readTree(trees, d.working);
+      const files = edit.kind === 'reset' ? await this.readTree(trees, d.base) : new Map(previous);
+      const aliases = new Map(edit.kind === 'reset' ? d.baselineAliases : d.redirects);
+      if (edit.kind !== 'reset') editStage(files, aliases, edit);
+      const working = await this.saveTree(trees, files, { rev: d.working, files: previous });
+      if (working === d.working && JSON.stringify([...aliases]) === JSON.stringify(d.redirects))
+        return d.generation;
+      const gen = randomUUID();
+      requireActive();
       await atomic(
-        path,
+        this.draftPath(id, group),
         JSON.stringify({
-          v: 1,
-          id: group,
-          workspaceId: id,
-          base: snapshotRevision(await this.scan(id, true)),
-          steps: null,
+          ...d,
+          working,
+          generation: gen,
+          redirects: [...aliases],
+          edited: true,
+          submitted: null,
         }),
       );
+      if (d.working !== d.base && d.working !== working)
+        await rm(trees.directory(d.working), { recursive: true, force: true });
+      return gen;
     });
   }
 
@@ -812,53 +1005,61 @@ export class FileMemoryStore implements MemoryStore {
     id: string,
     group: string,
     action:
-      | { kind: 'propose'; steps: PlanStep[]; seen: string | null }
+      | { kind: 'submit'; generation: string }
       | { kind: 'review' }
       | { kind: 'apply'; revision: string; confirmed: number[] },
     validate: (files: ReadonlyMap<string, string>) => void,
+    requireActive?: () => void,
   ) {
     return this.locked(id, async () => {
       await this.validateWorkspace(id);
       await this.recover(id);
-      const draft = await this.draft(id, group);
+      requireActive?.();
       const journal = await this.loadJournal(id);
       if (ledger(journal.changes).groups.has(group))
-        throw new StashError('STASH_STALE_READ', '整理已经执行');
-      // 确认前重新读盘，不信任同大小、同 mtime 的外部文件。
-      if (action.kind === 'apply') for (const p of await this.list(id)) await this.read(id, p);
-      const files = await this.scan(id, true);
-      if (snapshotRevision(files) !== draft.base)
-        throw new StashError('STASH_STALE_READ', '工作区已变化，请重新整理', {
+        throw new StashError('STASH_STALE_READ', '整理已经执行', { kind: 'maintenance-closed' });
+      const d = await this.openStage(id, group);
+      if (action.kind !== 'submit' && (!d.submitted || d.working === d.base))
+        throw new StashError('STASH_STALE_READ', '没有可审阅的固定版本', {
           kind: 'maintenance-stale',
         });
-      if (action.kind === 'propose' && action.seen !== draft.base)
-        throw new StashError('STASH_STALE_READ', '请完整读取整理语料', {
-          kind: 'maintenance-read',
+      const auto = action.kind === 'submit' && d.mode === 'auto';
+      if (action.kind === 'submit' && action.generation !== d.generation)
+        throw new StashError('STASH_STALE_READ', '副本在查看差异后发生了变化', {
+          kind: 'maintenance-diff',
         });
-      const steps = action.kind === 'propose' ? stepsSchema.parse(action.steps) : draft.steps;
-      if (!steps) throw new StashError('STASH_NOT_FOUND', '尚无计划');
-      if (containsSecret(JSON.stringify(steps)))
-        throw new StashError('STASH_SECRET', '整理计划包含凭据');
-      const preview = previewPlan(files, steps, ledger(journal.changes).aliases);
-      const result = new Map(files);
-      for (const c of preview.changes) {
-        if (c.after === null) result.delete(c.path);
-        else result.set(c.path, c.after);
-      }
-      validate(result);
-      const revision = digest(JSON.stringify([draft.base, preview]));
-      if (action.kind === 'propose')
-        await atomic(this.draftPath(id, group), JSON.stringify({ ...draft, steps }));
+      const trees = await this.trees(id, group),
+        files = await this.readTree(trees, d.working);
+      const live = await this.scan(id, false),
+        baseline = new Map(d.baselineAliases),
+        aliases = new Map(d.redirects);
+      const currentAliases = await this.aliases(id);
+      if (
+        snapshotRevision(live) !== d.base ||
+        currentAliases.size !== baseline.size ||
+        [...baseline].some(([p, t]) => currentAliases.get(p) !== t)
+      )
+        throw new StashError('STASH_STALE_READ', '正式记忆已变化，副本已保留', {
+          kind: 'maintenance-stale',
+        });
+      const preview = stagePreview(live, files, baseline, aliases);
+      validate(files);
+      const revision = d.submitted ?? digest(JSON.stringify([d.base, d.generation, preview]));
+      const applied = !!preview.changes.length && (auto || action.kind === 'apply');
       if (action.kind === 'apply') {
-        if (action.revision !== revision) throw new StashError('STASH_STALE_READ', '计划已变化');
+        if (action.revision !== revision)
+          throw new StashError('STASH_STALE_READ', '审阅版本已变化', { kind: 'maintenance-stale' });
         if (
           action.confirmed.length !== preview.rules.length ||
           !preview.rules.every((r) => action.confirmed.includes(r.line))
         )
-          throw new StashError('STASH_READ_ONLY', '需要逐条确认规则');
-        await this.batch(id, group, 'maintenance', preview.changes);
+          throw new StashError('STASH_READ_ONLY', '需要确认全部规则');
       }
-      return { id: group, revision, ...preview };
+      requireActive?.();
+      if (applied) await this.batch(id, group, 'maintenance', preview.changes, requireActive);
+      else if (action.kind === 'submit' && revision !== d.submitted)
+        await atomic(this.draftPath(id, group), JSON.stringify({ ...d, submitted: revision }));
+      return { id: group, revision, ...preview, applied };
     });
   }
 
@@ -903,7 +1104,13 @@ export class FileMemoryStore implements MemoryStore {
     });
   }
 
-  private async batch(id: string, group: string, op: string, rows: PlanChange[]) {
+  private async batch(
+    id: string,
+    group: string,
+    op: string,
+    rows: PlanChange[],
+    requireActive?: () => void,
+  ) {
     // 预检所有真实路径，包括 Markdown 清单之外的普通文件和空目录。
     for (const c of rows)
       if (((await this.read(id, c.path))?.content ?? null) !== c.before)
@@ -928,6 +1135,7 @@ export class FileMemoryStore implements MemoryStore {
       32 * 1024 * 1024
     )
       throw new StashError('STASH_INVALID_DATA', '修改日志容量不足');
+    requireActive?.();
     await atomic(join(this.directory(id), '.batch.json'), JSON.stringify({ v: 1, changes }));
     await this.recover(id);
   }

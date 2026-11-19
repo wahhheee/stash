@@ -154,6 +154,8 @@ export function MaintenancePanel({
               (
                 {
                   planning: 'maintPlanning',
+                  editing: 'maintEditing',
+                  unchanged: 'maintUnchanged',
                   proposed: 'maintProposed',
                   applied: 'maintApplied',
                   reverted: 'maintReverted',

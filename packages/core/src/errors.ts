@@ -23,6 +23,8 @@ export type StashErrorDetail =
         | 'maintenance-read'
         | 'maintenance-stale'
         | 'maintenance-only'
+        | 'maintenance-diff'
+        | 'maintenance-closed'
         | 'maintenance-alias'
         | 'history-options'
         | 'history-path'

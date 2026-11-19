@@ -92,7 +92,16 @@ export class MemoryPage {
     return this.withTarget(target, async (id, agent) => {
       const workspace = this.adapter.ctx.workspaceRegistry.list().find((w) => w.id === id)!;
       const { store, meter, config } = this.adapter;
-      const inspect = () => inspectMaintenance(store, id, workspace.path, meter, config);
+      const registry = this.adapter.ctx.workspaceRegistry;
+      const inspect = () =>
+        inspectMaintenance(
+          store,
+          id,
+          workspace.path,
+          meter,
+          config,
+          () => registry.archivedSessionIds,
+        );
       const state = await inspect();
       const validate = (files: ReadonlyMap<string, string>) => validatePlan(files, meter, config);
       let review: MaintenanceData['review'] = null,
@@ -100,6 +109,7 @@ export class MemoryPage {
       if (action.op === 'start') {
         if (!agent) throw new StashError('STASH_INVALID_DATA', '请从当前会话发起整理');
         const policy = await this.adapter.policy(agent);
+        const mode = action.mode ?? 'review';
         if (!policy.enabled || !policy.inheritWorkspace)
           throw new StashError('STASH_DISABLED', '请先启用工作区记忆');
         const route = agent.model.current();
@@ -108,8 +118,13 @@ export class MemoryPage {
         const local =
           (await this.adapter.switches.get({ kind: 'session', id: agent.id })) ?? DEFAULT_SWITCHES;
         const group = SessionId('stash-maint-' + action.requestId);
-        if (state.runs.some((r) => r.id === group))
+        this.adapter.requireActivePlan(group);
+        const existing = state.runs.find((r) => r.id === group);
+        if (existing) {
+          if (existing.mode !== mode)
+            throw new StashError('STASH_INVALID_DATA', '本次整理的应用方式已确定');
           return { ...state, review: null, started: group };
+        }
         const handle = await this.adapter.ctx.agents.create({
           sessionId: group,
           meta: { cwd: workspace.path },
@@ -117,14 +132,11 @@ export class MemoryPage {
         });
         try {
           await workspace.attachSession(group);
-          await this.adapter.switches.set(
-            { kind: 'session', id: group },
-            { ...local, writable: false },
-          );
-          await store.startPlan(id, group);
+          await this.adapter.switches.set({ kind: 'session', id: group }, local);
+          await store.startPlan(id, group, mode);
           handle.agent.followup(
             createUserMessage({
-              content: [{ type: 'text', text: maintenancePrompt(health) }],
+              content: [{ type: 'text', text: maintenancePrompt(health, mode) }],
               source: { kind: 'user' },
             }),
           );
@@ -133,8 +145,20 @@ export class MemoryPage {
           await handle.dispose();
           throw error;
         }
+      } else if (action.op === 'discard') {
+        const group = SessionId(action.id);
+        if (!workspace.sessionIds.includes(group))
+          throw new StashError('STASH_NOT_FOUND', '整理会话不在此工作区');
+        const row = state.runs.find((r) => r.id === group);
+        if (row?.status === 'applied' || row?.status === 'reverted')
+          throw new StashError('STASH_STALE_READ', '已应用的整理不能放弃');
+        if (!row && !registry.archivedSessionIds.includes(group))
+          throw new StashError('STASH_NOT_FOUND', '整理不存在');
+        await registry.archiveSession(group);
+        return { ...(await inspect()), review: null, started: null };
       } else if (action.op === 'rollback') await store.rollback(id, action.id, validate);
       else if (action.op === 'review' || action.op === 'apply') {
+        this.adapter.requireActivePlan(action.id);
         const result = await store.plan(
           id,
           action.id,
@@ -142,11 +166,19 @@ export class MemoryPage {
             ? { kind: 'review' }
             : { kind: 'apply', revision: action.revision, confirmed: action.confirmed },
           validate,
+          () => this.adapter.requireActivePlan(action.id),
         );
-        if (action.op === 'review') review = result;
+        if (action.op === 'review')
+          review = {
+            id: result.id,
+            revision: result.revision,
+            changes: result.changes,
+            rules: result.rules,
+          };
       }
       // 返回已知的提交结果；后续读取失败不能把已经发生的动作伪装成失败。
-      if (started) state.runs.push({ id: started, status: 'planning' });
+      if (started && action.op === 'start')
+        state.runs.push({ id: started, mode: action.mode ?? 'review', status: 'planning' });
       if (action.op === 'apply' || action.op === 'rollback')
         for (const row of state.runs)
           if (row.id === action.id) row.status = action.op === 'apply' ? 'applied' : 'reverted';

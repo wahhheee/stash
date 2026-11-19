@@ -13,11 +13,15 @@ function errorDetail(detail: StashErrorDetail): string {
         return 'Other-session memory is read-only. No changes were made. Read it with memory_view; if needed and permitted, copy useful content to workspace or current-session memory with a source reference.';
       return 'Session history is read-only. No changes were made. Use memory_view to read or cite the original records.';
     case 'maintenance-read':
-      return 'Read the workspace maintenance corpus with memory_view at /notes/, continuing its cursor until complete, then submit the plan.';
+      return 'Read the working copy with memory_view at /notes/, following each cursor to [complete], before editing. On resume, read it again.';
     case 'maintenance-stale':
       return 'The workspace or proposal changed. Do not apply the old plan; start a new planning session or review the current proposal in the memory page.';
     case 'maintenance-only':
-      return 'This planning session only reads the current workspace. Use memory_view at /notes/ and submit a proposal with stash_plan.';
+      return 'Only the private working copy is editable. Use memory_view, memory_write or stash_stage, inspect stash_diff, then stash_submit.';
+    case 'maintenance-diff':
+      return 'Read the current cumulative stash_diff to [complete] before stash_submit. If you edited after inspecting it, inspect it again.';
+    case 'maintenance-closed':
+      return 'This maintenance group has already been applied or rolled back. Do not retry or edit it; start a new session for new work.';
     case 'maintenance-alias':
       return 'The path is reserved by a merge. Read the old path to find the canonical note. Update that note directly; archive instead of deleting a redirect target.';
     case 'memory-path':

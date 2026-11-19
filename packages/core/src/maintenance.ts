@@ -59,6 +59,7 @@ export function previewPlan(
   files: ReadonlyMap<string, string>,
   steps: readonly PlanStep[],
   aliases: ReadonlyMap<string, string>,
+  staging = false,
 ): PlanPreview {
   const next = new Map(files),
     changes: PlanChange[] = [],
@@ -122,6 +123,14 @@ export function previewPlan(
     names.some((p) => p.split('/').some((_, i, parts) => unique.has(parts.slice(0, i).join('/'))))
   )
     invalid();
+  if (!changes.length) invalid();
+  return { changes, rules: staging ? [] : compareRules(files, next) };
+}
+
+export function compareRules(
+  files: ReadonlyMap<string, string>,
+  next: ReadonlyMap<string, string>,
+): RuleReview[] {
   const beforeRules = expandRules(files),
     afterRules = expandRules(next);
   const rules: RuleReview[] = [];
@@ -132,8 +141,7 @@ export function previewPlan(
     for (let i = 0; i < Math.max(a.length, b.length); i++)
       if (a[i] !== b[i]) rules.push({ line: i + 1, before: a[i] ?? null, after: b[i] ?? null });
   }
-  if (!changes.length) invalid();
-  return { changes, rules };
+  return rules;
 }
 
 export interface NoteUsage {

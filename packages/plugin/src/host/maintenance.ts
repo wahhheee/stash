@@ -23,10 +23,12 @@ export async function inspectMaintenance(
   cwd: string,
   meter: TokenEstimator,
   config: MemoryBudgets & { unreadDays: number },
+  archivedIds: () => readonly string[],
 ) {
   const { files, usage, runs, lastRun } = await store.maintenanceState(id);
   const state = composeResident(files, meter, config.indexBudgetTokens);
   const head = await readHead(cwd);
+  const archived = new Set(archivedIds());
   return {
     health: {
       ...healthCounts(files, usage, Date.now(), config.unreadDays, lastRun, head),
@@ -35,6 +37,12 @@ export async function inspectMaintenance(
       rulesUsed: meter.estimate(state.rules),
       rulesLimit: config.rulesBudgetTokens,
     },
-    runs,
+    runs: runs.flatMap((run) =>
+      !archived.has(run.id)
+        ? [run]
+        : run.status === 'applied' || run.status === 'reverted'
+          ? [{ ...run, archived: true as const }]
+          : [],
+    ),
   };
 }

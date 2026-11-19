@@ -1,10 +1,23 @@
 import { isMaintenance, stepsSchema, runId } from './maintenance-schema.ts';
 import { inspectMaintenance, validatePlan } from '../host/maintenance.ts';
-import { PLAN_ONLY, PLAN_SAVED, PLAN_TOOL, MAINTENANCE_GUIDE } from '@wahhheee/stash-core';
+import {
+  PLAN_ONLY,
+  PLAN_SAVED,
+  PLAN_APPLIED,
+  DIFF_TOOL,
+  STAGE_TOOL,
+  SUBMIT_TOOL,
+  STAGE_VIEW_TOOL,
+  STAGE_WRITE_TOOL,
+  STAGED,
+  NO_CHANGES,
+  MAINTENANCE_GUIDE,
+} from '@wahhheee/stash-core';
 import { DshSwitchStore } from './switches.ts';
 import { DEFAULT_SWITCHES, resolveSwitches } from '@wahhheee/stash-core';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
+import { SessionId } from '@deepseek-ai/dsh-session';
 import type {} from '@deepseek-ai/dsh-system-prompt';
 import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-token-meter';
@@ -38,6 +51,7 @@ import { historyTarget } from '@wahhheee/stash-core';
 import { residentSchema, eventResident } from './memory-records.ts';
 import { sessionMemoryProjection, SessionMemoryStore, commitMessage } from './session-memory.ts';
 import { parseWriteInput } from './write-input.ts';
+import { StageSession } from '../host/stage-session.ts';
 
 const viewSchema = z
   .object({
@@ -103,6 +117,11 @@ export class MemoryAdapter {
   private readonly decisions = new WeakMap<Agent, string[]>();
   readonly meter: TokenEstimator;
 
+  requireActivePlan(group: string) {
+    if (this.ctx.workspaceRegistry.archivedSessionIds.includes(SessionId(group)))
+      throw new StashError('STASH_READ_ONLY', '整理会话已归档');
+  }
+
   constructor(
     readonly ctx: Context,
     readonly config: ResolvedConfig,
@@ -144,7 +163,9 @@ export class MemoryAdapter {
       if (decision.kind === 'reject' || (step === 1 && !decision.messages.length)) return decision;
       const policy = await this.policy(agent);
       await this.syncRegistration(agent, policy.enabled);
-      if (!policy.enabled && !visibleRecords(agent).length) return decision;
+      // 整理工具自带副本上下文，不将正式记忆的规则或写权限提示混入编辑过程。
+      if (isMaintenance(agent.id) || (!policy.enabled && !visibleRecords(agent).length))
+        return decision;
       const memory = await this.memory(agent);
       const records = visibleRecords(agent);
       for (const message of decision.messages)
@@ -310,43 +331,80 @@ export class MemoryAdapter {
         const planner = isMaintenance(agent.id);
         if (planner) {
           scope.tools.restrict({ allow: [] });
+          const tools = [STAGE_VIEW_TOOL, STAGE_WRITE_TOOL, STAGE_TOOL, DIFF_TOOL, SUBMIT_TOOL];
           scope.tools.guard((exec) =>
-            ['memory_view', 'stash_plan', 'run_code'].includes(exec.name) ? undefined : PLAN_ONLY,
+            exec.name === 'run_code' || tools.some((t) => t.name === exec.name)
+              ? undefined
+              : PLAN_ONLY,
           );
-          scope.tools.register(
-            {
-              ...PLAN_TOOL,
-              output: {
-                schema: { type: 'string' },
-                render: (_args, value) => [{ type: 'text', text: String(value) }],
+          let stage: StageSession | undefined;
+          for (const tool of tools)
+            scope.tools.register(
+              {
+                ...tool,
+                output: {
+                  schema: { type: 'string' },
+                  render: (_args, value) => [{ type: 'text', text: String(value) }],
+                },
+                execute: async (args, exec) =>
+                  this.boundary(async () => {
+                    exec.signal.throwIfAborted();
+                    const policy = await this.policy(agent);
+                    if (!policy.enabled || !policy.inheritWorkspace)
+                      throw new StashError('STASH_DISABLED', '工作区记忆未启用');
+                    const memory = await this.memory(agent);
+                    stage ??= new StageSession(
+                      this.store,
+                      memory.workspaceId,
+                      agent.id,
+                      this.meter,
+                      this.config.viewBudgetTokens,
+                      () => this.requireActivePlan(agent.id),
+                    );
+                    if (tool.name === 'memory_view') {
+                      const input = viewSchema
+                        .pick({ path: true, cursor: true })
+                        .strict()
+                        .parse(args);
+                      return stage.view(input.path, input.cursor);
+                    }
+                    if (tool.name === 'memory_write') {
+                      await stage.edit({ kind: 'write', input: parseWriteInput(args) });
+                      return STAGED;
+                    }
+                    if (tool.name === 'stash_stage') {
+                      if (
+                        z
+                          .object({ op: z.literal('reset') })
+                          .strict()
+                          .safeParse(args).success
+                      )
+                        await stage.edit({ kind: 'reset' });
+                      else {
+                        const [step] = stepsSchema.parse([args]);
+                        if (!step || !['move', 'merge', 'split'].includes(step.op))
+                          throw new StashError('STASH_INVALID_DATA', '不支持此结构操作');
+                        await stage.edit({ kind: 'organize', step });
+                      }
+                      return STAGED;
+                    }
+                    if (tool.name === 'stash_diff') {
+                      const input = viewSchema.pick({ cursor: true }).strict().parse(args);
+                      return stage.diff(input.cursor);
+                    }
+                    z.object({}).strict().parse(args);
+                    const result = await stage.submit((files) =>
+                      validatePlan(files, this.meter, this.config),
+                    );
+                    return result.applied
+                      ? PLAN_APPLIED
+                      : result.changes.length
+                        ? PLAN_SAVED
+                        : NO_CHANGES;
+                  }),
               },
-              execute: async (args) =>
-                this.boundary(async () => {
-                  const policy = await this.policy(agent);
-                  if (!policy.enabled || !policy.inheritWorkspace)
-                    throw new StashError('STASH_DISABLED', '工作区记忆未启用');
-                  const input = z
-                    .object({ steps: z.string().max(4 * 1024 * 1024) })
-                    .strict()
-                    .parse(args);
-                  let raw: unknown;
-                  try {
-                    raw = JSON.parse(input.steps);
-                  } catch {
-                    throw new StashError('STASH_INVALID_DATA', '整理计划不是 JSON');
-                  }
-                  const memory = await this.memory(agent);
-                  await this.store.plan(
-                    memory.workspaceId,
-                    agent.id,
-                    { kind: 'propose', steps: stepsSchema.parse(raw), seen: memory.corpusRevision },
-                    (files) => validatePlan(files, this.meter, this.config),
-                  );
-                  return PLAN_SAVED;
-                }),
-            },
-            activation,
-          );
+              activation,
+            );
         }
         scope.on('tools/result', (exec, result) => {
           this.sessionMemories
@@ -364,30 +422,62 @@ export class MemoryAdapter {
                 : INSTRUCTIONS
               : '',
         });
-        scope.tools.register(
-          {
-            ...VIEW_TOOL,
-            output: {
-              schema: { type: 'string' },
-              render: (_args, value) => [{ type: 'text', text: String(value) }],
-            },
-            execute: async (args, exec) =>
-              this.boundary(async () => {
-                if (!(await this.policy(agent)).enabled)
-                  throw new StashError('STASH_DISABLED', '记忆已关闭');
-                const input = viewSchema.parse(args);
-                if (
-                  planner &&
-                  ((!['/', '/RULES.md', '/.guide.md', '/notes'].includes(input.path) &&
-                    !input.path.startsWith('/notes/')) ||
-                    !(await this.policy(agent)).inheritWorkspace)
-                )
-                  throw new StashError('STASH_READ_ONLY', '只能读取工作区', {
-                    kind: 'maintenance-only',
-                  });
-                const memory = await this.memory(agent);
-                const target = sessionMemoryTarget(input.path, agent.id);
-                if (target?.writable) {
+        if (!planner)
+          scope.tools.register(
+            {
+              ...VIEW_TOOL,
+              output: {
+                schema: { type: 'string' },
+                render: (_args, value) => [{ type: 'text', text: String(value) }],
+              },
+              execute: async (args, exec) =>
+                this.boundary(async () => {
+                  if (!(await this.policy(agent)).enabled)
+                    throw new StashError('STASH_DISABLED', '记忆已关闭');
+                  const input = viewSchema.parse(args);
+
+                  const memory = await this.memory(agent);
+                  const target = sessionMemoryTarget(input.path, agent.id);
+                  if (target?.writable) {
+                    if (
+                      input.query !== undefined ||
+                      input.since !== undefined ||
+                      input.until !== undefined ||
+                      input.detail !== undefined ||
+                      input.all !== undefined
+                    )
+                      throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径', {
+                        kind: 'history-options',
+                      });
+                    const session = await this.sessionMemory(agent);
+                    session.store.begin(exec.rootCallId);
+                    return session.memory.view(target.path, input.cursor, input.path);
+                  }
+                  if (target || historyTarget(input.path, agent.id)) {
+                    const domain = await this.switches.ready;
+                    const privacy = JSON.stringify([...domain.table('sessions').entries()]);
+                    let browser = this.browsers.get(agent);
+                    if (this.privacy.get(agent) !== privacy) {
+                      browser?.clearPages();
+                      this.privacy.set(agent, privacy);
+                    }
+                    if (!browser) {
+                      browser = new HistoryBrowser(
+                        await this.history,
+                        memory.workspaceId,
+                        agent.id,
+                        this.meter,
+                        this.config.viewBudgetTokens,
+                        {
+                          discoverable: (id, current) =>
+                            id === current ||
+                            (domain.table('sessions').get(id)?.discoverable ?? true),
+                        },
+                      );
+                      this.browsers.set(agent, browser);
+                    }
+                    return browser.view(input);
+                  }
                   if (
                     input.query !== undefined ||
                     input.since !== undefined ||
@@ -398,50 +488,11 @@ export class MemoryAdapter {
                     throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径', {
                       kind: 'history-options',
                     });
-                  const session = await this.sessionMemory(agent);
-                  session.store.begin(exec.rootCallId);
-                  return session.memory.view(target.path, input.cursor, input.path);
-                }
-                if (target || historyTarget(input.path, agent.id)) {
-                  const domain = await this.switches.ready;
-                  const privacy = JSON.stringify([...domain.table('sessions').entries()]);
-                  let browser = this.browsers.get(agent);
-                  if (this.privacy.get(agent) !== privacy) {
-                    browser?.clearPages();
-                    this.privacy.set(agent, privacy);
-                  }
-                  if (!browser) {
-                    browser = new HistoryBrowser(
-                      await this.history,
-                      memory.workspaceId,
-                      agent.id,
-                      this.meter,
-                      this.config.viewBudgetTokens,
-                      {
-                        discoverable: (id, current) =>
-                          id === current ||
-                          (domain.table('sessions').get(id)?.discoverable ?? true),
-                      },
-                    );
-                    this.browsers.set(agent, browser);
-                  }
-                  return browser.view(input);
-                }
-                if (
-                  input.query !== undefined ||
-                  input.since !== undefined ||
-                  input.until !== undefined ||
-                  input.detail !== undefined ||
-                  input.all !== undefined
-                )
-                  throw new StashError('STASH_UNSUPPORTED', '这些选项只用于历史路径', {
-                    kind: 'history-options',
-                  });
-                return memory.view(input.path, input.cursor, input.path, planner);
-              }),
-          },
-          activation,
-        );
+                  return memory.view(input.path, input.cursor, input.path);
+                }),
+            },
+            activation,
+          );
         if (!planner)
           scope.tools.register(
             {
@@ -651,6 +702,7 @@ export class MemoryAdapter {
         agent.session.header.cwd!,
         this.meter,
         this.config,
+        () => this.ctx.workspaceRegistry.archivedSessionIds,
       );
       return {
         kind: 'success',

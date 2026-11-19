@@ -5,7 +5,6 @@ import {
   parseNote,
   archiveNote,
   GUIDE,
-  maintenanceCorpus,
   redirectNotice,
   FOLD_HINT,
   renderIndex,
@@ -22,7 +21,7 @@ import type {
   WriteInput,
 } from '@wahhheee/stash-core';
 import type { FileMemoryStore } from '../adapters/memory-store.ts';
-import { digest, snapshotRevision } from '../adapters/memory-store.ts';
+import { digest } from '../adapters/memory-store.ts';
 import { containsSecret } from '../adapters/redaction.ts';
 
 export type MemoryBackend = Pick<FileMemoryStore, 'observe' | 'snapshot' | 'read' | 'transact'> &
@@ -30,12 +29,6 @@ export type MemoryBackend = Pick<FileMemoryStore, 'observe' | 'snapshot' | 'read
 
 /** 读取凭据只存在于当前 agent；完整连续读完才允许覆盖。 */
 export class WorkspaceMemory {
-  private corpusRead: string | null = null;
-
-  get corpusRevision() {
-    return this.corpusRead;
-  }
-
   private readonly reads = new Map<string, string>();
   private readonly cursors = new Map<string, { path: string; revision: string; offset: number }>();
 
@@ -70,29 +63,23 @@ export class WorkspaceMemory {
     return (await this.observe()).state;
   }
 
-  async view(path: string, cursor?: string, displayPath = path, corpus = false): Promise<string> {
+  async view(path: string, cursor?: string, displayPath = path): Promise<string> {
     memoryPath(path);
     let text: string;
     let file = false;
     let canonical = path;
     let prefix = '';
-    let corpusBase: string | null = null;
     if (path === '/.guide.md') text = GUIDE;
     else if (path === '/' || path === '/notes' || path.endsWith('/')) {
       const files = await this.store.snapshot(this.workspaceId);
-      if (corpus && path === '/notes/') {
-        if (!cursor) this.corpusRead = null;
-        corpusBase = snapshotRevision(files);
-        text = maintenanceCorpus(files);
-      } else
-        text = [...files]
-          .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
-          .map(
-            ([p, content]) =>
-              (displayPath.startsWith('./') ? '.' + p : p) +
-              (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
-          )
-          .join('\n');
+      text = [...files]
+        .filter(([p]) => path === '/' || p.startsWith(path === '/notes' ? '/notes/' : path))
+        .map(
+          ([p, content]) =>
+            (displayPath.startsWith('./') ? '.' + p : p) +
+            (p.startsWith('/notes/') ? ': ' + String(parseNote(content).fields.description) : ''),
+        )
+        .join('\n');
     } else {
       const read =
         path.startsWith('/notes/') && this.store.readNote
@@ -143,7 +130,6 @@ export class WorkspaceMemory {
       this.cursors.set(next, { path, revision: tokenHash, offset: end });
       return viewResult(displayPath, prefix + text.slice(offset, end), next);
     }
-    if (corpusBase !== null) this.corpusRead = corpusBase;
     if (file) {
       if (canonical.startsWith('/notes/'))
         await this.store.recordRead?.(this.workspaceId, canonical, revision);

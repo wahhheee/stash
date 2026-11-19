@@ -83,7 +83,8 @@ export const memoryEn = {
   danger: 'Danger zone',
   changesImmediate: 'Settings are saved immediately.',
   enabledHelp: 'Use memory in model requests. Turning this off does not delete saved content.',
-  writableHelp: 'Allow the model to update memory. You can always edit memory here.',
+  writableHelp:
+    'Allow direct memory writes in ordinary chats. Maintenance uses its own mode. You can always edit memory here.',
   discoverableHelp:
     'Allow other sessions to find this conversation in lists and searches. Explicit full references remain readable.',
   inheritWorkspaceHelp: 'Include workspace rules and note descriptions in this session’s context.',
@@ -216,7 +217,7 @@ export const memoryZh: typeof memoryEn = {
   danger: '危险操作',
   changesImmediate: '设置修改后立即保存。',
   enabledHelp: '在模型请求中使用记忆。关闭不会删除已保存的内容。',
-  writableHelp: '允许模型更新记忆。你始终可以在记忆页手动编辑。',
+  writableHelp: '允许普通会话中的模型直接修改记忆。整理模式单独选择；你始终可以手动编辑。',
   discoverableHelp: '允许其他会话通过清单和搜索找到本会话；完整引用仍可明确访问。',
   inheritWorkspaceHelp: '在本会话上下文中加载工作区规则和笔记描述。',
   followWorkspace: '跟随工作区',

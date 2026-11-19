@@ -39,7 +39,12 @@ await build({
   dts: false,
   css: { inject: false },
   deps: {
-    neverBundle: ['react', 'react/jsx-runtime', 'react-dom'],
+    neverBundle: [
+      'react',
+      'react/jsx-runtime',
+      'react-dom',
+      /^@deepseek-ai\/dsh-client-ui-primitives$/u,
+    ],
     alwaysBundle: ['zod', '@deepseek-ai/dsh-typert-protocol/remote-info'],
     onlyBundle: false,
   },

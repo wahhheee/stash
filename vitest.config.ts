@@ -1,5 +1,10 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  test: { include: ['packages/**/*.test.{ts,tsx}'], testTimeout: 15000, restoreMocks: true },
+  test: {
+    include: ['packages/**/*.test.{ts,tsx}'],
+    testTimeout: 15000,
+    restoreMocks: true,
+    setupFiles: ['./packages/plugin/tests/host-ui.setup.tsx'],
+  },
 });

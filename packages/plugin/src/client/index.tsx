@@ -1,3 +1,5 @@
+import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
+import type {} from '@deepseek-ai/dsh-api-workspace-controller/client';
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-api-remotes/client';
 import type {} from '@deepseek-ai/dsh-client-locale/client';
@@ -25,7 +27,10 @@ function MemorySeat({ identity, ...props }: MemoryPanelProps & { identity: strin
 
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap {
-    stash: { scope: 'workspace' | 'session'; section: 'notes' | 'rules' | 'preferences' };
+    stash: {
+      scope: 'workspace' | 'session';
+      section: 'notes' | 'rules' | 'preferences' | 'maintenance';
+    };
   }
 }
 
@@ -40,7 +45,10 @@ function MemoryTab({
     'scope' in params &&
     'section' in params &&
     (params.scope === 'workspace' || params.scope === 'session') &&
-    (params.section === 'notes' || params.section === 'rules' || params.section === 'preferences')
+    (params.section === 'notes' ||
+      params.section === 'rules' ||
+      params.section === 'preferences' ||
+      (params.scope === 'workspace' && params.section === 'maintenance'))
       ? { scope: params.scope, section: params.section, revision: tab.navigation.revision }
       : undefined;
   return <MemorySeat {...props} navigation={navigation} />;
@@ -55,6 +63,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     'sidebarRightTabs',
     'sidebarRight',
     'uiWorkspace',
+    'sessions',
+    'workspaces',
   ];
   const ui = ctx.inject(services, (scope) => {
     scope.effect(() => scope.locale.register('stash', { en, zh }), 'stash: locale');
@@ -104,18 +114,20 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             target: 'workspace',
             order: 250,
             observe: () => [scope.locale],
-            resolve: ({ workspaceId }) => [
-              {
-                id: 'settings',
-                label: t('settings'),
+            resolve: ({ workspaceId }) =>
+              (
+                [
+                  ['maintenance', 'maintMenu'],
+                  ['preferences', 'settings'],
+                ] as const
+              ).map(([section, label]) => ({
+                id: section === 'preferences' ? 'settings' : section,
+                label: t(label),
                 run: async () => {
                   await menus.uiWorkspace.openWorkspace(workspaceId);
-                  menus.sidebarRight.openTab('stash', {
-                    params: { scope: 'workspace', section: 'preferences' },
-                  });
+                  menus.sidebarRight.openTab('stash', { params: { scope: 'workspace', section } });
                 },
-              },
-            ],
+              })),
           }),
         'stash: workspace settings',
       );
@@ -150,7 +162,30 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         dispose();
       };
     };
+    // 宿主与客户端共用服务名；客户端目录是可观察快照，而不是宿主的 list 方法。
+    const sessions = scope.get('sessions') as
+      typeof scope.sessions | Pick<ISessions, 'list'> | undefined;
+    if (!sessions || typeof sessions.list !== 'object') throw new Error('客户端会话目录不可用');
+    const catalog: ISessions['list'] = sessions.list;
+    const workspaces = scope.workspaces.list;
+    const archives = {
+      getSnapshot: () => workspaces.getSnapshot().archivedSessionIds,
+      subscribe: (listener: () => void) => workspaces.subscribe(listener),
+    };
     const injectMemory = (id: string) => ({
+      archives,
+      activity: {
+        subscribe: (l: () => void) => catalog.subscribe(l),
+        getSnapshot: () => {
+          const s: SessionListState = catalog.getSnapshot();
+          return JSON.stringify(
+            s.ids
+              .filter((i) => i.startsWith('stash-maint-'))
+              .map((i) => [i, s.byId[i]?.updatedAt, s.byId[i]?.running]),
+          );
+        },
+      },
+      sessionLabel: (sessionId: string) => catalog.getSnapshot().byId[sessionId as SessionId],
       identity: id,
       cache,
       openPage: () =>

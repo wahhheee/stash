@@ -11,6 +11,10 @@ it('输入框入口在真实 Cordis 注入作用域打开会话设置，来源�
   const openSession = vi.fn();
   ctx.provide('remote', { $mount: async () => async () => {}, stash: {} });
   ctx.provide('remote.stash', {});
+  ctx.provide('workspaces', {
+    list: { getSnapshot: () => ({ archivedSessionIds: ['archived'] }), subscribe: () => () => {} },
+  });
+  ctx.provide('sessions', { list: { getSnapshot: () => ({ byId: {} }) } });
   ctx.provide('locale', {
     register: () => () => {},
     bind: () => (key: keyof typeof zh) => zh[key],
@@ -34,6 +38,7 @@ it('输入框入口在真实 Cordis 注入作用域打开会话设置，来源�
       params: { scope: 'session', section: 'preferences' },
     });
     const panel = seats.get('sidebar.right.pane.tab')!.inject('current');
+    expect(panel.archives?.getSnapshot()).toEqual(['archived']);
     panel.openSession!('source');
     expect(openSession).toHaveBeenCalledWith('source');
   } finally {

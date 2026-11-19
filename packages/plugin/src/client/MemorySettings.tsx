@@ -3,6 +3,7 @@ import { resolveSwitches } from '@wahhheee/stash-core';
 import type { SwitchRecord } from '@wahhheee/stash-core';
 import { Menu } from '@deepseek-ai/dsh-client-ui-primitives/src/Menu.tsx';
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives/src/Menu.tsx';
+import { IconWarningTriangleOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
 import { Button, Choice, Switch } from './memory-controls.tsx';
 import type { Translate } from './memory-controls.tsx';
 import type { MemoryPageData } from '../page-types.ts';
@@ -52,47 +53,56 @@ export function MemorySettings({
     scope === 'workspace' ? resolveSwitches(data.globalEnabled, data.workspace) : data.effective;
   return (
     <div className={styles.settings}>
-      <p className={styles.hint}>{t('changesImmediate')}</p>
-      {!data.globalEnabled && <p className={styles.notice}>{t('globalOff')}</p>}
-      {(['enabled', 'writable'] as const).map((key) => (
-        <div key={key} className={styles.settingRow}>
-          <div>
-            <strong>{t(key)}</strong>
-            <p className={styles.hint}>{t(key === 'enabled' ? 'enabledHelp' : 'writableHelp')}</p>
-            <span className={styles.hint}>
-              {t('effectiveState').replace('{state}', t(effective[key] ? 'on' : 'off'))}
-            </span>
-          </div>
-          <Choice
-            label={t(key)}
-            disabled={pending || !data.globalEnabled}
-            options={options(data, scope, key, t)}
-            value={value[key] === null ? 'inherit' : String(value[key])}
-            onChange={(id) => update({ ...value, [key]: id === 'inherit' ? null : id === 'true' })}
-          />
-        </div>
-      ))}
-      {scope === 'session' &&
-        (['discoverable', 'inheritWorkspace'] as const).map((key) => (
+      <section aria-label={t('switchSettings')} className={styles.switchGroup}>
+        <header>
+          <h2>{t('switchSettings')}</h2>
+          <p className={styles.hint}>{t('changesImmediate')}</p>
+        </header>
+        {!data.globalEnabled && <p className={styles.notice}>{t('globalOff')}</p>}
+        {(['enabled', 'writable'] as const).map((key) => (
           <div key={key} className={styles.settingRow}>
             <div>
               <strong>{t(key)}</strong>
-              <p className={styles.hint}>
-                {t(key === 'discoverable' ? 'discoverableHelp' : 'inheritWorkspaceHelp')}
-              </p>
+              <p className={styles.hint}>{t(key === 'enabled' ? 'enabledHelp' : 'writableHelp')}</p>
+              <span className={styles.hint}>
+                {t('effectiveState').replace('{state}', t(effective[key] ? 'on' : 'off'))}
+              </span>
             </div>
-            <Switch
+            <Choice
               label={t(key)}
-              checked={value[key]}
               disabled={pending || !data.globalEnabled}
-              onChange={(checked) => update({ ...value, [key]: checked })}
+              options={options(data, scope, key, t)}
+              value={value[key] === null ? 'inherit' : String(value[key])}
+              onChange={(id) =>
+                update({ ...value, [key]: id === 'inherit' ? null : id === 'true' })
+              }
             />
           </div>
         ))}
-      <div className={styles.dangerZone}>
-        <h3>{t('danger')}</h3>
+        {scope === 'session' &&
+          (['discoverable', 'inheritWorkspace'] as const).map((key) => (
+            <div key={key} className={styles.settingRow}>
+              <div>
+                <strong>{t(key)}</strong>
+                <p className={styles.hint}>
+                  {t(key === 'discoverable' ? 'discoverableHelp' : 'inheritWorkspaceHelp')}
+                </p>
+              </div>
+              <Switch
+                label={t(key)}
+                checked={value[key]}
+                disabled={pending || !data.globalEnabled}
+                onChange={(checked) => update({ ...value, [key]: checked })}
+              />
+            </div>
+          ))}
+      </section>
+      <section aria-label={t('danger')} className={styles.dangerZone}>
+        <h3>
+          <IconWarningTriangleOutlineRegular /> {t('danger')}
+        </h3>
         <p className={styles.hint}>
-          {t(scope === 'workspace' ? 'clearWorkspaceNotice' : 'clearSessionNotice')}
+          {t(scope === 'workspace' ? 'clearWorkspaceHint' : 'clearSessionHint')}
         </p>
         <Button
           variant="outline"
@@ -101,7 +111,7 @@ export function MemorySettings({
         >
           {t(scope === 'workspace' ? 'clearWorkspace' : 'clearSession')}
         </Button>
-      </div>
+      </section>
     </div>
   );
 }

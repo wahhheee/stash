@@ -21,7 +21,7 @@ import { MemoryLocation, displayPath, notePath } from './MemoryLocation.tsx';
 import { NoteEditor } from './NoteEditor.tsx';
 import { NoteBadges, NoteContent } from './NoteContent.tsx';
 import { MaintenancePanel } from './MaintenancePanel.tsx';
-import type { MaintenanceCall } from './MaintenancePanel.tsx';
+import type { MaintenanceCall, ArchiveSource } from './MaintenancePanel.tsx';
 import { MemorySettings, QuickMemory } from './MemorySettings.tsx';
 import {
   createMemoryCache,
@@ -50,6 +50,9 @@ export interface MemoryPanelProps {
   openPage?: (() => void) | undefined;
   openSession?: ((id: string) => void) | undefined;
   maintenance?: MaintenanceCall;
+  archives?: ArchiveSource;
+  activity?: { subscribe: (listener: () => void) => () => void; getSnapshot: () => string };
+  sessionLabel?: (id: string) => { title?: string; updatedAt: number } | undefined;
   compact?: boolean;
 }
 
@@ -70,6 +73,9 @@ export function MemoryPanel({
   openPage,
   openSession,
   maintenance,
+  archives,
+  activity,
+  sessionLabel,
   compact = false,
 }: MemoryPanelProps): ReactNode {
   const localCache = useRef(createMemoryCache());
@@ -113,6 +119,7 @@ export function MemoryPanel({
     field.querySelector<HTMLElement>('input, textarea, button')?.focus({ preventScroll: true });
   }, [errors]);
   const putView = (next: MemoryView) => {
+    if (scroll.current) scroll.current.scrollTop = 0;
     cache.views.set(identity, next);
     setView(next);
   };
@@ -436,6 +443,7 @@ export function MemoryPanel({
           </h1>
           <Button
             size="sm"
+            variant="outline"
             disabled={Boolean(pending) || loading}
             onClick={() => void refresh(false, true)}
             aria-label={t('refreshMemory')}
@@ -463,7 +471,13 @@ export function MemoryPanel({
               ]}
               onChange={(id) => {
                 if (id === 'workspace' || id === 'session')
-                  guard(() => go({ scope: id, section, path: null }));
+                  guard(() =>
+                    go({
+                      scope: id,
+                      section: id === 'session' && section === 'maintenance' ? 'notes' : section,
+                      path: null,
+                    }),
+                  );
               }}
             />
             <SegmentedTabs
@@ -483,6 +497,16 @@ export function MemoryPanel({
                   id: tabId + '-rules',
                   panelId: tabId + '-body',
                 },
+                ...(scope === 'workspace' && maintenance
+                  ? [
+                      {
+                        value: 'maintenance' as const,
+                        label: t('maintTab'),
+                        id: tabId + '-maintenance',
+                        panelId: tabId + '-body',
+                      },
+                    ]
+                  : []),
                 {
                   value: 'preferences',
                   label: t('preferences'),
@@ -512,9 +536,12 @@ export function MemoryPanel({
             {!editable && section !== 'preferences' && (
               <p className={styles.notice}>{t('sessionNotStarted')}</p>
             )}
-            {section === 'preferences' && scope === 'workspace' && maintenance && (
+            {section === 'maintenance' && scope === 'workspace' && maintenance && (
               <MaintenancePanel
                 call={maintenance}
+                archives={archives}
+                activity={activity}
+                sessionLabel={sessionLabel}
                 refreshKey={healthRefresh}
                 enabled={data.effective.enabled && data.effective.inheritWorkspace}
                 openSession={openSession}
@@ -704,7 +731,10 @@ export function MemoryPanel({
           </>
         )}
       </div>
-      <footer className={styles.footer}>
+      <footer
+        className={styles.footer}
+        hidden={!draft && !issue && !notice && !pending && !copiedPath}
+      >
         <div className={styles.feedback} aria-live="polite">
           {issue && copy === null && !confirm ? (
             <>

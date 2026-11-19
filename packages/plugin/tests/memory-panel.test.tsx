@@ -483,3 +483,22 @@ it('快捷设置打开失败时保留菜单并显示反馈，重试成功才关�
     'false',
   );
 });
+
+it('只有工作区有整理页；设置不加载整理；回到会话范围选中笔记', async () => {
+  const maintenance = vi.fn(async () => {
+    throw new Error('测试读取失败');
+  });
+  fixture({}, { maintenance });
+  await ready();
+  expect(screen.queryByRole('tab', { name: zh.maintTab })).toBeNull();
+  choose(zh.scopePicker, '工作区 · 工程');
+  tab(zh.preferences);
+  expect(screen.getByRole('region', { name: zh.switchSettings })).toBeDefined();
+  expect(maintenance).not.toHaveBeenCalled();
+  tab(zh.maintTab);
+  await screen.findByText(zh.maintInspectError);
+  expect(screen.queryByText(zh.changesImmediate)).toBeNull();
+  choose(zh.scopePicker, zh.currentSession + ' · 设计讨论');
+  expect(screen.queryByRole('tab', { name: zh.maintTab })).toBeNull();
+  expect(screen.getByRole('tab', { name: zh.notes }).getAttribute('aria-selected')).toBe('true');
+});

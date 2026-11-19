@@ -306,6 +306,12 @@ importers:
       '@deepseek-ai/dsh-api-remotes':
         specifier: 0.2.2-rc.3
         version: 0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-scope@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0))
+      '@deepseek-ai/dsh-api-session-controller':
+        specifier: 0.2.2-rc.3
+        version: 0.2.2-rc.3(ee74f0035f81c26035cc702871a81e0e)
+      '@deepseek-ai/dsh-api-workspace-controller':
+        specifier: 0.2.2-rc.3
+        version: 0.2.2-rc.3(6b4669b129f0a1fa4d234f7311249bd1)
       '@deepseek-ai/dsh-client-connection':
         specifier: 0.2.2-rc.3
         version: 0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-scope@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0))

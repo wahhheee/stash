@@ -4,7 +4,7 @@ import type { MemoryPageData, PageMutationResult } from '../page-types.ts';
 import type { Translate } from './memory-controls.tsx';
 
 export type MemoryScope = 'workspace' | 'session';
-export type MemorySection = 'notes' | 'rules' | 'preferences';
+export type MemorySection = 'notes' | 'rules' | 'maintenance' | 'preferences';
 
 export type MemoryDraft = {
   path: string;

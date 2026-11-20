@@ -414,10 +414,44 @@ function quickMenu() {
   );
   vi.stubGlobal(
     'matchMedia',
-    vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })),
+    vi.fn((query: string) => ({
+      matches: query === '(any-hover: hover)',
+      addEventListener() {},
+      removeEventListener() {},
+    })),
   );
   fireEvent.click(screen.getByRole('button', { name: 'stash · 记忆' }));
 }
+
+it('点击 stash 仅打开主菜单，悬停或键盘进入对应项才展开子菜单', async () => {
+  fixture({}, { compact: true });
+  const trigger = screen.getByRole('button', { name: 'stash · 记忆' });
+  await waitFor(() => expect(trigger.textContent).toContain(zh.on));
+  trigger.focus();
+  quickMenu();
+  const parent = (label: string) => screen.getByRole('menuitem', { name: `${label} · ${zh.on}` });
+  expect(screen.getAllByRole('menu')).toHaveLength(1);
+  expect(document.activeElement).toBe(trigger);
+
+  fireEvent.pointerOver(parent(zh.writable), { pointerType: 'mouse' });
+  expect(parent(zh.writable).getAttribute('aria-expanded')).toBe('true');
+  expect(parent(zh.enabled).getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(trigger);
+  fireEvent.click(trigger);
+  expect(screen.getAllByRole('menu')).toHaveLength(1);
+
+  fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(parent(zh.enabled));
+  fireEvent.keyDown(parent(zh.enabled), { key: 'ArrowRight' });
+  expect(document.activeElement).toBe(
+    screen.getByRole('menuitem', { name: `${zh.followWorkspace} · ${zh.on}` }),
+  );
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.getAllByRole('menu')).toHaveLength(1);
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});
 
 it('快捷菜单仅在读取失败时显示重试，重试成功或自动恢复后移除入口', async () => {
   const { data, load, mutate, reset } = fixture({}, { compact: true });

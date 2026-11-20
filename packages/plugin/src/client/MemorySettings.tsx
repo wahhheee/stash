@@ -176,7 +176,6 @@ export function QuickMemory({
       <Menu
         open={open}
         portal
-        autoFocus
         side="top"
         items={items}
         selectedIds={selected}

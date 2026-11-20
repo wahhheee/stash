@@ -9,6 +9,7 @@ import type { Translate } from './memory-controls.tsx';
 import type { MemoryPageData } from '../page-types.ts';
 import type { MemoryScope } from './memory-state.ts';
 import styles from './MemoryPanel.module.css';
+import { StashIcon } from './StashIcon.tsx';
 
 function options(
   data: MemoryPageData,
@@ -198,6 +199,7 @@ export function QuickMemory({
           <Button
             size="sm"
             variant="ghost"
+            icon={<StashIcon />}
             aria-label={'stash · ' + t('memory')}
             aria-haspopup="menu"
             aria-expanded={open}

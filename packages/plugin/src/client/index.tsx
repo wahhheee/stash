@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-chat/client';
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import { CopyReference, referenceLink } from './CopyReference.tsx';
+import { StashIcon } from './StashIcon.tsx';
 
 export const inject = ['remote', 'slots', 'locale', 'sidebarRightTabs'];
 
@@ -106,6 +107,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         'stash: session reference',
       );
     });
+    scope.slots.inject('contextMenu.icon', () =>
+      scope.slots.register({ name: 'contextMenu.icon', key: 'stash.settings' }, StashIcon),
+    );
     scope.inject(['contextMenus', 'uiWorkspace', 'sidebarRight'], (menus) => {
       menus.effect(
         () =>
@@ -114,20 +118,19 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             target: 'workspace',
             order: 250,
             observe: () => [scope.locale],
-            resolve: ({ workspaceId }) =>
-              (
-                [
-                  ['maintenance', 'maintMenu'],
-                  ['preferences', 'settings'],
-                ] as const
-              ).map(([section, label]) => ({
-                id: section === 'preferences' ? 'settings' : section,
-                label: t(label),
+            resolve: ({ workspaceId }) => [
+              {
+                id: 'settings',
+                label: t('settings'),
+                icon: { key: 'stash.settings' },
                 run: async () => {
                   await menus.uiWorkspace.openWorkspace(workspaceId);
-                  menus.sidebarRight.openTab('stash', { params: { scope: 'workspace', section } });
+                  menus.sidebarRight.openTab('stash', {
+                    params: { scope: 'workspace', section: 'preferences' },
+                  });
                 },
-              })),
+              },
+            ],
           }),
         'stash: workspace settings',
       );
@@ -139,7 +142,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           kind: 'stash',
           title: () => 'stash',
           guide: [
-            { id: 'stash', order: 80, title: () => 'stash', description: () => t('description') },
+            {
+              id: 'stash',
+              order: 80,
+              title: () => 'stash',
+              description: () => t('description'),
+              icon: StashIcon,
+            },
           ],
         }),
       'stash: tab',

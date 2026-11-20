@@ -2,6 +2,7 @@
   "name": "@wahhheee/dsh-stash",
   "version": "0.6.0",
   "description": "DSH 工作区记忆、原始历史与引用",
+  "icon": "./icon.svg",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -35,6 +36,7 @@
   },
   "files": [
     "lib",
+    "icon.svg",
     "cordis.patch.yml",
     "LICENSE",
     "README.md"

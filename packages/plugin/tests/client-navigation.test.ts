@@ -1,14 +1,24 @@
 import { Context } from '@deepseek-ai/cordis';
+import type { MenuContribution } from '@deepseek-ai/dsh-client-ui-context-menu/client';
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client';
 import { expect, it, vi } from 'vitest';
 import * as client from '../src/client/index.tsx';
 import type { MemoryPanelProps } from '../src/client/MemoryPanel.tsx';
 import { zh } from '../src/client/locales.ts';
 
-it('输入框入口在真实 Cordis 注入作用域打开会话设置，来源导航使用已声明服务', async () => {
+it('输入框打开会话设置，工作区菜单仅提供该工作区的设置，来源导航可用', async () => {
   const ctx = new Context();
   const seats = new Map<string, { inject: (id: string) => Partial<MemoryPanelProps> }>();
   const openTab = vi.fn();
   const openSession = vi.fn();
+  const openWorkspace = vi.fn();
+  let workspaceMenu: MenuContribution<'workspace'> | undefined;
+  ctx.provide('contextMenus', {
+    register: (menu: MenuContribution<'session'> | MenuContribution<'workspace'>) => {
+      if (menu.target === 'workspace') workspaceMenu = menu;
+      return () => {};
+    },
+  });
   ctx.provide('remote', { $mount: async () => async () => {}, stash: {} });
   ctx.provide('remote.stash', {});
   ctx.provide('workspaces', {
@@ -21,7 +31,7 @@ it('输入框入口在真实 Cordis 注入作用域打开会话设置，来源�
   });
   ctx.provide('sidebarRightTabs', { register: () => () => {} });
   ctx.provide('sidebarRight', { openTab });
-  ctx.provide('uiWorkspace', { openSession });
+  ctx.provide('uiWorkspace', { openSession, openWorkspace });
   ctx.provide('slots', {
     inject: (_name: string, callback: () => () => void) => callback(),
     register: (seat: { name: string; inject: (id: string) => Partial<MemoryPanelProps> }) => {
@@ -41,6 +51,22 @@ it('输入框入口在真实 Cordis 注入作用域打开会话设置，来源�
     expect(panel.archives?.getSnapshot()).toEqual(['archived']);
     panel.openSession!('source');
     expect(openSession).toHaveBeenCalledWith('source');
+    const workspaceId = 'chosen' as WorkspaceId;
+    const actions = await workspaceMenu!.resolve(
+      { workspaceId, displayTitle: '工作区', path: '/chosen' },
+      new AbortController().signal,
+    );
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({
+      id: 'settings',
+      label: zh.settings,
+      icon: { key: 'stash.settings' },
+    });
+    await actions[0]!.run!();
+    expect(openWorkspace).toHaveBeenCalledWith(workspaceId);
+    expect(openTab).toHaveBeenLastCalledWith('stash', {
+      params: { scope: 'workspace', section: 'preferences' },
+    });
   } finally {
     await ctx.fiber.dispose();
   }

@@ -1,6 +1,6 @@
 # stash 实施计划
 
-> 规划参考：原始实施计划，保留后续阶段目标；阶段一的实际取舍见 [决策记录](decisions/0001-phase-one-host-contracts.md)。下文的 rc.1 为原始规划基线，现行 rc.3 基线见 [工程设计](design.md) 和 [宿主升级决策](decisions/0003-dsh-rc3.md)。
+> 规划参考：原始实施计划，保留后续阶段目标；阶段一的实际取舍见 [决策记录](decisions/0001-phase-one-host-contracts.md)。下文的 rc.1 为原始规划基线，现行宿主基线见 [工程设计](design.md)。
 
 版本：v0.1  
 日期：2026 年 11 月 10 日  

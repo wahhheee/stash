@@ -19,8 +19,9 @@ import { redact } from './redaction.ts';
 import type { ResolvedConfig } from './config.ts';
 import { FileMemoryStore, digest } from './memory-store.ts';
 import { composeResident } from '@wahhheee/stash-core';
+import manifest from '../../package.json' with { type: 'json' };
 
-export const SUPPORTED_DSH = '>=0.2.2-rc.3 <0.3.0-0';
+export const SUPPORTED_DSH = manifest.engines.dsh;
 
 export const TraceSchema = z
   .object({

@@ -113,7 +113,7 @@ it('复制完整轮次引用，标题转义与剪贴板失败可见', async () =
 it('展示连接、版本、失败与重连，卸载时释放订阅', async () => {
   const status = {
     version: '0.6.0',
-    hostVersion: '0.2.2-rc.3',
+    hostVersion: '0.2.2-rc.5',
     phase: 6 as const,
     memoryEnabled: true as const,
     trace: 'off' as const,

@@ -163,16 +163,29 @@ export class HistoryBrowser {
       throw new StashError('STASH_NOT_FOUND', '事件范围不存在', { kind: 'event-not-found' });
     const inRange = (time: string) =>
       Date.parse(time) >= range.from && Date.parse(time) <= range.to;
-    const events = sessions
-      .flatMap((s) => s.events)
-      .filter((e) => {
-        if (target.window && (e.seq < target.window.from || e.seq > target.window.to)) return false;
-        if (target.view === 'summaries' && !e.summary) return false;
-        return inRange(e.timestamp);
-      });
+    const bySession = new Map(
+      sessions.map((s) => {
+        // 工作区检索面向既往记录；当前还在执行的提问与工具回显不是独立证据。
+        const turn = s.turns.at(-1);
+        const omitFrom =
+          query && target.view === 'sessions' && s.id === this.current && turn && !turn.complete
+            ? turn.from
+            : Infinity;
+        return [
+          s.id,
+          s.events.filter((e) => {
+            if (e.seq >= omitFrom) return false;
+            if (target.window && (e.seq < target.window.from || e.seq > target.window.to))
+              return false;
+            if (target.view === 'summaries' && !e.summary) return false;
+            return inRange(e.timestamp);
+          }),
+        ] as const;
+      }),
+    );
     if (query) {
       const search = new LiteralHistorySearch<HistoryEvent>({
-        read: async (id) => events.filter((e) => e.sessionId === id),
+        read: async (id) => bySession.get(id) ?? [],
       });
       const result = await search.search({
         sessionIds: selected,
@@ -199,6 +212,7 @@ export class HistoryBrowser {
           input.until,
           input.query,
           notes.length,
+          target.view === 'sessions',
         ) + (notes.length ? sessionNoteHits(notes) : '')
       );
     }
@@ -208,6 +222,7 @@ export class HistoryBrowser {
         ids,
       );
     const session = sessions[0]!;
+    const events = bySession.get(session.id)!;
     if (target.view === 'turns')
       return historyTurns(
         session.id,

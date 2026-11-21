@@ -333,6 +333,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: 0.2.2-rc.5
         version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: 0.2.2-rc.5
+        version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)
       '@deepseek-ai/dsh-client-ui-sidebar-right':
         specifier: 0.2.2-rc.5
         version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)
@@ -348,6 +351,9 @@ importers:
       '@deepseek-ai/dsh-compaction':
         specifier: 0.2.2-rc.5
         version: 0.2.2-rc.5(9e5c6ec6402cad7b426f31cf261588ea)
+      '@deepseek-ai/dsh-compaction-basic':
+        specifier: 0.2.2-rc.5
+        version: 0.2.2-rc.5(4f2a52c33592b443b375adf69b32887a)
       '@deepseek-ai/dsh-llm':
         specifier: 0.2.2-rc.5
         version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0))

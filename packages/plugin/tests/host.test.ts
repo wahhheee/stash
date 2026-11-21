@@ -40,7 +40,7 @@ it('真实 Cordis 命令、Remote、卸载重载与作用域清理', async () =>
     const peer = new Peer(ctx, { principal: { kind: 'owner' } });
     const invoke = (args: Record<string, unknown> = {}) =>
       ctx.typertGateway.invoke({ namespace: 'stash', method: 'getStatus', args, peer });
-    expect(await invoke()).toMatchObject({ version: '0.6.0', phase: 6, memoryEnabled: true });
+    expect(await invoke()).toMatchObject({ version: '0.7.0', phase: 7, memoryEnabled: true });
     await expect(invoke({ secret: 'unexpected' })).rejects.toThrow();
     const command = await ctx.commands.execute(
       agent,

@@ -1,16 +1,13 @@
-import { isMaintenance, stepsSchema, runId } from './maintenance-schema.ts';
+import { isMaintenance, runId } from './maintenance-schema.ts';
+import { runStageTool } from './stage-tools.ts';
 import { inspectMaintenance, validatePlan } from '../host/maintenance.ts';
 import {
   PLAN_ONLY,
-  PLAN_SAVED,
-  PLAN_APPLIED,
   DIFF_TOOL,
   STAGE_TOOL,
   SUBMIT_TOOL,
   STAGE_VIEW_TOOL,
   STAGE_WRITE_TOOL,
-  STAGED,
-  NO_CHANGES,
   MAINTENANCE_GUIDE,
 } from '@wahhheee/stash-core';
 import { DshSwitchStore } from './switches.ts';
@@ -361,46 +358,10 @@ export class MemoryAdapter {
                       this.config.viewBudgetTokens,
                       () => this.requireActivePlan(agent.id),
                     );
-                    if (tool.name === 'memory_view') {
-                      const input = viewSchema
-                        .pick({ path: true, cursor: true })
-                        .strict()
-                        .parse(args);
-                      return stage.view(input.path, input.cursor);
-                    }
-                    if (tool.name === 'memory_write') {
-                      await stage.edit({ kind: 'write', input: parseWriteInput(args) });
-                      return STAGED;
-                    }
-                    if (tool.name === 'stash_stage') {
-                      if (
-                        z
-                          .object({ op: z.literal('reset') })
-                          .strict()
-                          .safeParse(args).success
-                      )
-                        await stage.edit({ kind: 'reset' });
-                      else {
-                        const [step] = stepsSchema.parse([args]);
-                        if (!step || !['move', 'merge', 'split'].includes(step.op))
-                          throw new StashError('STASH_INVALID_DATA', '不支持此结构操作');
-                        await stage.edit({ kind: 'organize', step });
-                      }
-                      return STAGED;
-                    }
-                    if (tool.name === 'stash_diff') {
-                      const input = viewSchema.pick({ cursor: true }).strict().parse(args);
-                      return stage.diff(input.cursor);
-                    }
-                    z.object({}).strict().parse(args);
-                    const result = await stage.submit((files) =>
-                      validatePlan(files, this.meter, this.config),
+                    const copy = stage;
+                    return runStageTool(copy, tool.name, args, () =>
+                      copy.submit((files) => validatePlan(files, this.meter, this.config)),
                     );
-                    return result.applied
-                      ? PLAN_APPLIED
-                      : result.changes.length
-                        ? PLAN_SAVED
-                        : NO_CHANGES;
                   }),
               },
               activation,

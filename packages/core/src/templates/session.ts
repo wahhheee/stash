@@ -23,7 +23,9 @@ export function sessionContext(state: {
     '\n## Session rules (./RULES.md)\n' +
     (escapeMemory(state.rules) || '(none)') +
     (state.parentRules ? '\n## Parent session rules\n' + escapeMemory(state.parentRules) : '') +
-    '\n## Session note index\n' +
+    '\n## Session note index' +
+    (state.index ? ' (usable conclusions; answer directly when sufficient)' : '') +
+    '\n' +
     (escapeMemory(state.index) || '(none)')
   );
 }

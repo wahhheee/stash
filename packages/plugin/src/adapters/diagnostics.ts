@@ -69,6 +69,7 @@ export const ReportSchema = z
       z.literal(4),
       z.literal(5),
       z.literal(6),
+      z.literal(7),
     ]),
     config: z
       .object({
@@ -262,7 +263,7 @@ export async function writeReport(
     createdAt: new Date().toISOString(),
     version,
     hostVersion,
-    phase: 6,
+    phase: 7,
     config,
     checks,
     trace: trace.slice(-200),

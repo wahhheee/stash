@@ -169,6 +169,27 @@ it('字面搜索限定范围、中文与空白匹配、前缀去重和零结果'
   ).toContain('status: no-match');
 });
 
+it('工作区查询不把正在执行的提问和工具回显当旧证据，显式查本轮仍可读', async () => {
+  const { browser, sessions, a } = fixture();
+  const s = sessions.get(a)!;
+  sessions.set(a, {
+    ...s,
+    events: [
+      ...s.events,
+      { ...s.events[0]!, seq: 3, text: '需要谁签字？' },
+      { ...s.events[1]!, seq: 4, text: '签字', kind: 'tool/call' },
+    ],
+    turns: [...s.turns, { ...s.turns[0]!, turn: 2, from: 3, to: 4, complete: false }],
+  });
+  expect(await browser.view({ path: '/sessions', query: '签字', all: true })).toContain(
+    'status: no-match',
+  );
+  expect(await browser.view({ path: './log', query: '签字' })).toContain('status: matched');
+  expect(await browser.view({ path: '/sessions', query: '架构', all: true })).toContain(
+    'status: matched',
+  );
+});
+
 it('跨工作区仅完整引用；不可读和搜索失败绝不返回空结果', async () => {
   const { browser, sessions, b } = fixture();
   await expect(browser.view({ path: '/sessions/outside/log/turns' })).rejects.toMatchObject({

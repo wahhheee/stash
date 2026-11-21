@@ -19,6 +19,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import { CopyReference, referenceLink } from './CopyReference.tsx';
 import { StashIcon } from './StashIcon.tsx';
+import { GlobalSettings } from './GlobalSettings.tsx';
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client';
 
 export const inject = ['remote', 'slots', 'locale', 'sidebarRightTabs'];
 
@@ -70,6 +72,31 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const ui = ctx.inject(services, (scope) => {
     scope.effect(() => scope.locale.register('stash', { en, zh }), 'stash: locale');
     const t = scope.locale.bind('stash');
+    scope.inject(['configForms'], (settings) => {
+      const form = settings.configForms.get<{ compactionNotes: boolean }>('stash');
+      const supported = async () => {
+        const status = await scope.remote.stash.getStatus();
+        if (!status.ok) throw status.error;
+        return status.value.compactionSupported === true;
+      };
+      settings.slots.inject('settings.section', () =>
+        settings.slots.register(
+          {
+            name: 'settings.section',
+            id: 'stash',
+            order: 85,
+            label: () => 'stash',
+            locale: 'stash',
+            inject: () => ({
+              hooks: { form },
+              supported,
+              save: (value: boolean) => form.set('compactionNotes', value),
+            }),
+          },
+          GlobalSettings,
+        ),
+      );
+    });
     scope.slots.inject('conversation.chat.assistant-actions', () =>
       scope.slots.register(
         {

@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { SessionEvent, Session } from '@deepseek-ai/dsh-session';
+import { appendPluginRecord, pluginRecordOf } from '@deepseek-ai/dsh-session';
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import {
   commitFiles,
   emptyCommits,
   foldCommit,
+  resolveRedirect,
+  notePath,
   StashError,
   sessionEditNotice,
 } from '@wahhheee/stash-core';
@@ -14,6 +17,54 @@ import type { CommitState, MemoryCommit } from '@wahhheee/stash-core';
 import type { MemoryBackend } from '../host/memory.ts';
 import { digest } from './memory-store.ts';
 import { containsSecret } from './redaction.ts';
+
+const recordType = 'plugin:stash/compaction';
+type SessionState = CommitState & { aliases?: Record<string, string> | undefined };
+
+declare module '@deepseek-ai/dsh-session/types' {
+  interface PluginRecordMap {
+    'plugin:stash/compaction': { v: 1; commits: MemoryCommit[]; redirects: [string, string][] };
+  }
+}
+
+const batchSchema = z
+  .object({
+    v: z.literal(1),
+    commits: z.array(z.unknown()).min(1),
+    redirects: z.array(z.tuple([z.string(), z.string()])),
+  })
+  .strict();
+
+function batchOf(event: SessionEvent) {
+  const record = pluginRecordOf(event);
+  if (record?.type !== recordType) return;
+  const batch = batchSchema.parse(record.data);
+  return { ...batch, commits: batch.commits.map(validateCommit) };
+}
+
+function applyBatch(
+  state: SessionState,
+  commits: MemoryCommit[],
+  redirects: [string, string][],
+): SessionState {
+  const next = commits.reduce(foldCommit, state);
+  const aliases = new Map(Object.entries(state.aliases ?? {}));
+  for (const [from, to] of redirects) aliases.set(notePath(from), notePath(to));
+  for (const [from, to] of aliases)
+    if (next.files[from] || !next.files[resolveRedirect(to, aliases)])
+      throw new StashError('STASH_INVALID_DATA', '会话重定向无效');
+  return { ...next, ...(aliases.size ? { aliases: Object.fromEntries(aliases) } : {}) };
+}
+
+export function appendCompactionBatch(
+  session: Session,
+  state: SessionState,
+  commits: MemoryCommit[],
+  redirects: [string, string][],
+) {
+  applyBatch(state, commits, redirects);
+  appendPluginRecord(session, recordType, { v: 1, commits, redirects });
+}
 
 export const commitSchema = z
   .object({
@@ -63,27 +114,43 @@ export function eventCommit(event: SessionEvent): MemoryCommit | null {
   return null;
 }
 
-export function foldSession(events: readonly SessionEvent[]): CommitState {
-  return events.reduce((state, event) => {
-    const commit = eventCommit(event);
-    return commit ? foldCommit(state, commit) : state;
-  }, emptyCommits());
+export function eventCommits(event: SessionEvent) {
+  const batch = batchOf(event);
+  if (batch) return batch.commits;
+  const commit = eventCommit(event);
+  return commit ? [commit] : [];
 }
 
-export const sessionMemoryProjection: ProjectionDefinition<'stashSessionMemory', CommitState> = {
+function applyEvent(state: SessionState, event: SessionEvent): SessionState {
+  const batch = batchOf(event);
+  if (batch) return applyBatch(state, batch.commits, batch.redirects);
+  const commit = eventCommit(event);
+  if (!commit) return state;
+  const next = foldCommit(state, commit);
+  if (!state.aliases) return next;
+  const aliases = new Map(Object.entries(state.aliases));
+  if (commit.content === null)
+    for (const p of [...aliases.keys()].filter((p) => resolveRedirect(p, aliases) === commit.path))
+      aliases.delete(p);
+  return { ...next, aliases: Object.fromEntries(aliases) };
+}
+
+export function foldSession(events: readonly SessionEvent[]): SessionState {
+  return events.reduce(applyEvent, emptyCommits());
+}
+
+export const sessionMemoryProjection: ProjectionDefinition<'stashSessionMemory', SessionState> = {
   key: 'stashSessionMemory',
-  stateVersion: 1,
+  stateVersion: 2,
   stateSchema: z
     .object({
       files: z.record(z.string(), z.object({ content: z.string(), revision: z.string() }).strict()),
       applied: z.record(z.string(), z.string()),
+      aliases: z.record(z.string(), z.string()).optional(),
     })
     .strict(),
   init: emptyCommits,
-  apply: (state, event) => {
-    const commit = eventCommit(event);
-    return commit ? foldCommit(state, commit) : state;
-  },
+  apply: applyEvent,
 };
 
 /** 界面写入和嵌套调用共用通知载体；调用方负责将其追加或 deferContext。 */
@@ -102,7 +169,7 @@ export class SessionMemoryStore implements MemoryBackend {
 
   constructor(
     private readonly session: Session,
-    private readonly stateOf: () => CommitState,
+    private readonly stateOf: () => SessionState,
   ) {}
 
   begin(root: string) {
@@ -148,6 +215,11 @@ export class SessionMemoryStore implements MemoryBackend {
     return this.state().files[path] ?? null;
   }
 
+  async readNote(id: string, path: string) {
+    const target = resolveRedirect(path, new Map(Object.entries(this.stateOf().aliases ?? {})));
+    return { path: target, file: await this.read(id, target) };
+  }
+
   async transact<T>(
     _id: string,
     path: string,
@@ -158,6 +230,12 @@ export class SessionMemoryStore implements MemoryBackend {
     transform: (files: Map<string, string>) => { content: string | null; value: T },
   ): Promise<T> {
     const state = this.state();
+    const aliases = new Map(Object.entries(this.stateOf().aliases ?? {}));
+    if (
+      [...aliases.keys()].some((p) => p.toLowerCase() === path.toLowerCase()) ||
+      (op === 'delete' && [...aliases.values()].includes(path))
+    )
+      throw new StashError('STASH_READ_ONLY', '路径参与重定向', { kind: 'maintenance-alias' });
     const before = state.files[path]?.revision ?? null;
     if (expected === null && before !== null && op === 'create')
       throw new StashError('STASH_ALREADY_EXISTS', '会话文件已存在');

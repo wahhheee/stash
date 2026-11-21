@@ -2,8 +2,9 @@
 export interface StashStatus {
   readonly version: string;
   readonly hostVersion: string;
-  readonly phase: 6;
+  readonly phase: 7;
   readonly memoryEnabled: boolean;
+  readonly compactionSupported?: boolean | undefined;
   readonly trace: 'off' | 'metadata' | 'content';
 }
 

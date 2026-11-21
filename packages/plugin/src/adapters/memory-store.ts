@@ -107,12 +107,12 @@ async function atomic(path: string, text: string): Promise<void> {
   const temp = join(dirname(path), '.tmp-' + randomUUID());
   const file = await open(temp, 'wx', 0o600);
   try {
-    await file.writeFile(text, 'utf8');
-    await file.sync();
-  } finally {
-    await file.close();
-  }
-  try {
+    try {
+      await file.writeFile(text, 'utf8');
+      await file.sync();
+    } finally {
+      await file.close();
+    }
     await rename(temp, path);
   } finally {
     await unlink(temp).catch((error) => {
@@ -327,7 +327,7 @@ export class FileMemoryStore implements MemoryStore {
     return journal;
   }
 
-  private acceptChange(id: string, journal: JournalCache, change: JournalChange): void {
+  private validateChange(id: string, change: JournalChange): void {
     memoryPath(change.path, true);
     if (
       Boolean(change.group) !== ['maintenance', 'rollback'].includes(change.op) ||
@@ -343,15 +343,22 @@ export class FileMemoryStore implements MemoryStore {
       notePath(change.path);
       notePath(change.redirect);
     }
+    if (change.workspaceId !== id) throw new StashError('STASH_INVALID_DATA', '修改日志工作区不符');
+    for (const file of [change.before, change.after]) {
+      if (file && digest(file.content) !== file.revision)
+        throw new StashError('STASH_INVALID_DATA', '修改日志哈希损坏');
+      if (file && containsSecret(file.content))
+        throw new StashError('STASH_SECRET', '修改记录包含凭据');
+    }
+  }
+
+  private acceptChange(id: string, journal: JournalCache, change: JournalChange): void {
+    this.validateChange(id, change);
     if (
-      change.workspaceId !== id ||
       journal.ids.has(change.id) ||
       (journal.states.get(change.path)?.revision ?? null) !== (change.before?.revision ?? null)
     )
       throw new StashError('STASH_INVALID_DATA', '修改日志链损坏');
-    for (const file of [change.before, change.after])
-      if (file && digest(file.content) !== file.revision)
-        throw new StashError('STASH_INVALID_DATA', '修改日志哈希损坏');
     if (change.group || change.callId === 'clear') delete journal.aliases;
     journal.changes.push(change);
     journal.ids.add(change.id);
@@ -434,24 +441,9 @@ export class FileMemoryStore implements MemoryStore {
     )
       throw new StashError('STASH_INVALID_DATA', '整理恢复记录重复');
     for (const c of batch.changes) {
-      memoryPath(c.path, true);
-      if (
-        !c.group ||
-        c.group !== first.group ||
-        c.op !== first.op ||
-        c.actor !== c.group ||
-        c.callId !== c.group ||
-        c.workspaceId !== id ||
-        !['maintenance', 'rollback'].includes(c.op) ||
-        [c.before, c.after].some(
-          (f) => f && (digest(f.content) !== f.revision || containsSecret(f.content)),
-        )
-      )
+      this.validateChange(id, c);
+      if (!c.group || c.group !== first.group || c.op !== first.op)
         throw new StashError('STASH_INVALID_DATA', '整理恢复记录无效');
-      if (c.redirect) {
-        notePath(c.redirect);
-        notePath(c.path);
-      }
     }
     const single = await readOptional(join(this.directory(id), '.pending.json'));
     if (single !== null) {
@@ -492,11 +484,7 @@ export class FileMemoryStore implements MemoryStore {
     const raw = await readOptional(pending);
     if (raw === null) return;
     const change = changeSchema.parse(JSON.parse(raw));
-    if (change.workspaceId !== id)
-      throw new StashError('STASH_INVALID_DATA', '待提交记录工作区不符');
-    for (const f of [change.before, change.after])
-      if (f && digest(f.content) !== f.revision)
-        throw new StashError('STASH_INVALID_DATA', '待提交记录哈希错误');
+    this.validateChange(id, change);
     const current = await this.read(id, change.path);
     const revision = current?.revision ?? null;
     if (
@@ -510,6 +498,10 @@ export class FileMemoryStore implements MemoryStore {
     const recorded = journal.changes.find((c) => c.id === change.id);
     if (recorded && JSON.stringify(recorded) !== JSON.stringify(change))
       throw new StashError('STASH_INVALID_DATA', '待提交记录与日志不符');
+    if (recorded && revision !== (change.after?.revision ?? null))
+      throw new StashError('STASH_STALE_READ', '已提交文件在恢复前被改写', {
+        kind: 'recovery-conflict',
+      });
     if (!recorded) {
       this.appendText(journal, change);
       if ((journal.states.get(change.path)?.revision ?? null) !== (change.before?.revision ?? null))
@@ -819,6 +811,30 @@ export class FileMemoryStore implements MemoryStore {
       const base = await this.scan(id, true);
       const draft = await this.createStage(id, group, mode, base);
       await atomic(path, JSON.stringify(draft));
+    });
+  }
+
+  /** 临时副本不创建待审记录；仍使用正式整理的并发检查和可恢复批次。 */
+  async applyCompactionCopy(
+    id: string,
+    base: ReadonlyMap<string, string>,
+    original: ReadonlyMap<string, string>,
+    changes: PlanChange[],
+    requireActive: () => void,
+  ) {
+    if (!changes.length) return;
+    await this.locked(id, async () => {
+      await this.validateWorkspace(id);
+      await this.recover(id);
+      const files = await this.scan(id, true),
+        aliases = await this.aliases(id);
+      if (
+        snapshotRevision(files) !== snapshotRevision(base) ||
+        aliases.size !== original.size ||
+        [...original].some(([p, to]) => aliases.get(p) !== to)
+      )
+        throw new StashError('STASH_STALE_READ', '正式记忆已变化');
+      await this.batch(id, 'stash-maint-' + randomUUID(), 'maintenance', changes, requireActive);
     });
   }
 

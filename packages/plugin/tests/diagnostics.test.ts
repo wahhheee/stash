@@ -80,11 +80,15 @@ describe('诊断基础设施', () => {
     const checks = await doctor(config, '0.2.2-rc.5');
     expect(checks.every((c) => c.ok)).toBe(true);
     const report = await readReport(await writeReport(config, '0.1.0', '0.2.2-rc.5', checks));
-    expect(report.phase).toBe(6);
+    expect(report.phase).toBe(7);
     expect(report.trace).toHaveLength(1);
     expect(report.trace[0]).not.toHaveProperty('content');
     expect(JSON.stringify(report)).not.toContain('a'.repeat(30));
     const bad = join(root, 'bad.json.gz');
+    await writeFile(bad, gzipSync(JSON.stringify({ ...report, phase: 6 })));
+    expect((await readReport(bad)).phase).toBe(6);
+    await writeFile(bad, gzipSync(JSON.stringify({ ...report, phase: 8 })));
+    await expect(readReport(bad)).rejects.toThrow();
     await writeFile(bad, gzipSync(JSON.stringify({ ...report, format: 2 })));
     await expect(readReport(bad)).rejects.toThrow();
     await writeFile(bad, gzipSync(Buffer.alloc(8 * 1024 * 1024 + 1, 32)));
@@ -97,7 +101,7 @@ describe('诊断基础设施', () => {
   it.each([
     ['0.2.2-rc.4', false],
     ['0.2.2-rc.5', true],
-    ['0.2.2', true],
+    ['0.2.2', false],
     ['0.3.0-rc.1', false],
   ] as const)('doctor 检查宿主版本 %s', async (version, ok) => {
     const config = resolveConfig({ memoryRoot: await temporary() });

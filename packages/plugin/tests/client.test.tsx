@@ -3,11 +3,45 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest';
 import { StatusPanel } from '../src/client/StatusPanel.tsx';
 import { en, zh } from '../src/client/locales.ts';
+import { GlobalSettings, type CompactionForm } from '../src/client/GlobalSettings.tsx';
 import { CopyReference, referenceLink } from '../src/client/CopyReference.tsx';
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+it('全局补记开关常显用途和保持关闭提示，保存被拒绝时不伪装成已开启', async () => {
+  const state: CompactionForm = {
+    status: 'ready',
+    value: { compactionNotes: false },
+    writable: true,
+    revision: 1,
+    base: {},
+    user: {},
+  };
+  const save = vi.fn(async () => false);
+  const supported = async () => true;
+  await act(async () => {
+    render(
+      <GlobalSettings
+        useForm={(select) => select(state)}
+        save={save}
+        supported={supported}
+        t={(key) => zh[key]}
+      />,
+    );
+  });
+  expect(screen.getByText(/如果你不知道这有什么用，请保持关闭/).textContent).toContain(
+    'DSH 生成摘要前把有用的结论补记到 stash，无需你审核',
+  );
+  const toggle = screen.getByRole('switch', { name: zh.compactTitle });
+  await act(async () => {
+    fireEvent.click(toggle);
+  });
+  expect(save).toHaveBeenCalledWith(true);
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  expect(screen.getByRole('alert').textContent).toBe(zh.compactFailed);
 });
 
 it('引用图标具有明确名称，抑制重复点击并在成功后恢复', async () => {
@@ -112,9 +146,9 @@ it('复制完整轮次引用，标题转义与剪贴板失败可见', async () =
 
 it('展示连接、版本、失败与重连，卸载时释放订阅', async () => {
   const status = {
-    version: '0.6.0',
+    version: '0.7.0',
     hostVersion: '0.2.2-rc.5',
-    phase: 6 as const,
+    phase: 7 as const,
     memoryEnabled: true as const,
     trace: 'off' as const,
   };
@@ -136,7 +170,7 @@ it('展示连接、版本、失败与重连，卸载时释放订阅', async () =
     />,
   );
   expect(screen.getByRole('status').textContent).toBe(zh.connecting);
-  await screen.findByText('0.6.0');
+  await screen.findByText('0.7.0');
   fireEvent.click(screen.getByRole('button', { name: zh.refresh }));
   await screen.findByText(zh.disconnected);
   act(() => reset());

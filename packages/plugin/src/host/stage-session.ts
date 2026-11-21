@@ -14,21 +14,19 @@ import type { FileMemoryStore } from '../adapters/memory-store.ts';
 import type { StageEdit } from '../adapters/stage-files.ts';
 
 /** 阅读凭据限于当前会话和副本代次；续读不能跨文件或跨修改复用。 */
-export class StageSession {
-  private seen: string | null = null;
-  private checked: string | null = null;
+export class StagePages {
   private cursors = new Map<string, { key: string; offset: number }>();
 
   constructor(
-    private store: FileMemoryStore,
-    private id: string,
-    private group: string,
     private meter: TokenEstimator,
     private budget: number,
-    private active: () => void,
   ) {}
 
-  private page(key: string, text: string, cursor: string | undefined, complete: () => void) {
+  clear() {
+    this.cursors.clear();
+  }
+
+  page(key: string, text: string, cursor: string | undefined, complete: () => void) {
     const progress = cursor ? this.cursors.get(cursor) : null;
     if (cursor && progress?.key !== key)
       throw new StashError('STASH_STALE_READ', '续读已过期', { kind: 'cursor', scope: 'memory' });
@@ -53,6 +51,23 @@ export class StageSession {
     this.cursors.set(token, { key, offset: lo });
     return stagePage(text.slice(offset, lo), token);
   }
+}
+
+export class StageSession {
+  private seen: string | null = null;
+  private checked: string | null = null;
+  private pages: StagePages;
+
+  constructor(
+    private store: FileMemoryStore,
+    private id: string,
+    private group: string,
+    meter: TokenEstimator,
+    budget: number,
+    private active: () => void,
+  ) {
+    this.pages = new StagePages(meter, budget);
+  }
 
   async view(path: string, cursor?: string) {
     this.active();
@@ -72,7 +87,7 @@ export class StageSession {
       if (content === undefined) throw new StashError('STASH_NOT_FOUND', '文件不存在');
       text = (canonical === path ? '' : redirectNotice(path, canonical)) + content;
     }
-    return this.page(s.generation + path, text, cursor, () => {
+    return this.pages.page(s.generation + path, text, cursor, () => {
       if (path === '/notes/') this.seen = s.generation;
     });
   }
@@ -83,7 +98,7 @@ export class StageSession {
     const gen = await this.store.editStage(this.id, this.group, edit, this.seen, this.active);
     if (this.seen !== gen) {
       this.checked = null;
-      this.cursors.clear();
+      this.pages.clear();
     }
     this.seen = gen;
   }
@@ -91,7 +106,7 @@ export class StageSession {
   async diff(cursor?: string) {
     this.active();
     const { changes, generation } = await this.store.stageDiff(this.id, this.group);
-    return this.page(
+    return this.pages.page(
       generation + ':diff',
       changes.length ? JSON.stringify(changes) : NO_CHANGES,
       cursor,

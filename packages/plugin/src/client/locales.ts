@@ -1,6 +1,11 @@
 import { memoryEn, memoryZh } from './memory-locales.ts';
 
 export const en = {
+  compactTitle: 'Save notes when summarizing a conversation',
+  compactHelp:
+    'Before DSH summarizes the conversation, the model can save useful findings as stash notes without asking for approval. If you are unsure what this does, leave it off.',
+  compactUnsupported: 'This host is not using a supported compaction engine.',
+  compactFailed: 'Could not save the setting. Check the connection and try again.',
   ...memoryEn,
   maint: 'Workspace maintenance',
   maintTab: 'Organize',
@@ -142,6 +147,11 @@ export const en = {
 };
 
 export const zh: typeof en = {
+  compactTitle: '压缩对话时补记笔记',
+  compactHelp:
+    '开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash，无需你审核。如果你不知道这有什么用，请保持关闭。',
+  compactUnsupported: '当前 DSH 没有使用支持补记的压缩器。',
+  compactFailed: '设置未保存，请检查连接后重试。',
   ...memoryZh,
   maint: '工作区整理',
   maintTab: '整理',

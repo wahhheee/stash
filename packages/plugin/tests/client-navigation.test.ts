@@ -21,6 +21,7 @@ it('输入框打开会话设置，工作区菜单仅提供该工作区的设置�
   });
   ctx.provide('remote', { $mount: async () => async () => {}, stash: {} });
   ctx.provide('remote.stash', {});
+  ctx.provide('configForms', { get: () => ({}) });
   ctx.provide('workspaces', {
     list: { getSnapshot: () => ({ archivedSessionIds: ['archived'] }), subscribe: () => () => {} },
   });
@@ -41,6 +42,7 @@ it('输入框打开会话设置，工作区菜单仅提供该工作区的设置�
   });
   try {
     await ctx.plugin(client);
+    expect(seats.get('settings.section')).toMatchObject({ id: 'stash' });
     const input = seats.get('conversation.input.left')!.inject('current');
     expect(input.compact).toBe(true);
     input.openPage!();

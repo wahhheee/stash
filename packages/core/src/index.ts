@@ -17,3 +17,4 @@ export * from './switches.ts';
 export * from './note-form.ts';
 export * from './maintenance.ts';
 export * from './templates/maintenance.ts';
+export * from './templates/compaction.ts';

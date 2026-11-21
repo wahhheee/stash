@@ -14,10 +14,14 @@ export const MAINTENANCE_GUIDE = [
   'If the user requests revisions before application, edit the SAME copy. The first actual edit invalidates the old review. Inspect and submit the replacement once. Never report live changes unless the tool explicitly reports APPLIED. If live memory conflicts, report it; do not overwrite it.',
 ].join('\n');
 
-export const STAGE_REFERENCE = [
-  'Private working copy reference. Use the same paths on every turn. A continued conversation resumes its current files; old reviews are not separate copies.',
+export const STAGE_FILE_GUIDE = [
   '/RULES.md contains durable instructions. A standalone @notes/name.md includes the note body in the effective rules. A note is Markdown with YAML frontmatter: type and description are required single-line strings. Keep unknown fields. Optional status: archived or index: false hides a note from the resident index, not from the working copy.',
   'Example: two notes both mention tests, but one concerns release builds only. Do not merge them solely because their topics match. If the evidence establishes a duplicate, use stash_stage merge. It combines sources and keeps the surviving note metadata; reconcile or flag conflicting metadata before removing a note. Preserve scope and exceptions in the surviving file, then read the survivor and the old path. The old path should redirect to the survivor.',
+];
+
+export const STAGE_REFERENCE = [
+  'Private working copy reference. Use the same paths on every turn. A continued conversation resumes its current files; old reviews are not separate copies.',
+  ...STAGE_FILE_GUIDE,
   'Example revision: the user asks to narrow a rule to releases without submitting yet. Read the existing rule; use memory_write edit on its unique phrase. Read it back and stop. When later asked to submit, inspect the complete cumulative stash_diff and call stash_submit once. Report whether the result is pending review or already applied.',
   'When a source or conflict cannot be checked with these tools, leave the uncertain material intact and tell the user what needs verification. Do not infer deletion from age, zero reads, or a changed Git revision.',
 ].join('\n');

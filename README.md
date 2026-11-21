@@ -1,6 +1,18 @@
 # stash
 
-DSH 工作区记忆插件。当前版本 0.6.0 提供工作区与会话规则、笔记读写和分叉继承、常驻上下文、压缩后恢复、原始记录检索、引用复制、三级开关、记忆编辑页、增长指标、工作区整理与回滚、离线重放。
+DSH 工作区记忆插件。当前版本 0.7.0（未发布）提供工作区与会话规则、笔记读写和分叉继承、常驻上下文、压缩前补记与压缩后恢复、原始记录检索、引用复制、三级开关、记忆编辑页、增长指标、工作区整理与回滚、离线重放。
+
+## 第一次用 stash
+
+不用先做笔记。在 DSH 当前工作区里，试着说「以后发给志愿者的通知，用“小灯提醒：”开头」。开一个新聊天，只说「帮我写一条周六八点集合的志愿者通知」。想知道模型记了什么，打开右侧 **stash → 工作区 → 规则**；只想在这一次排练使用的称呼，就说「仅限本次排练」。
+
+问「上次雨天在哪里集合，为什么？」时，可以接一句「给我原话的聊天引用」来核对。模型可能把摘要看错，或者把没写的细节当作事实；重要安排请核对正文或原话。在记忆页可以手工更正；不希望模型再改内容，就到设置关闭「允许模型写入」。这不会删掉旧聊天，也不是保密开关。
+
+## Quick Start (English)
+
+In DSH Desktop, add the local plugin folder under **Plugins**, enable it and open **stash** in the right sidebar. In a workspace chat, try “Start volunteer notices with ‘Team update:’ from now on.” Open a new chat **in the same workspace** and ask for a volunteer notice without repeating the preference. Say “only for this rehearsal” for a session-only exception. You do not need to pick a file or write Markdown.
+
+Use **Workspace → Rules** for standing instructions and **Notes** for supporting details. Ask for a link to the original conversation to check an answer. If two people edit the same note, refresh and compare before saving; stash does not silently overwrite a changed version. To keep the model from editing, turn off model writes in settings. You can still edit the notes yourself. Hiding a chat from search or clearing its notes does not erase its history; do not store passwords or API keys here. For cleanup, use **Workspace → Maintenance** and review the proposed changes before applying them.
 
 ## 开发
 
@@ -13,7 +25,7 @@ pnpm check
 
 check 依次执行格式、lint、构建、类型、单元/宿主/客户端和真实进程端到端检查。普通测试只使用本地 mock，不需要 API key，也不读取日常 DSH profile。
 
-仓库默认使用 npmmirror；CI 使用 npm 官方源。可用 npm_config_registry 环境变量覆盖。凭据不要写入源码、配置样例或命令历史；本阶段无需真实模型密钥。
+仓库默认使用 npmmirror，CI 使用 npm 官方源。可用 npm_config_registry 环境变量覆盖。凭据不要写入源码、配置样例或命令历史。
 
 ## 安装与使用
 
@@ -45,7 +57,7 @@ Desktop：在“插件 → 添加插件”中输入 packages/plugin 的绝对目
 
 ```sh
 pnpm --dir packages/plugin pack --pack-destination ../..
-pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.6.0.tgz
+pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.7.0.tgz
 ```
 
 尚未发布 npm 包。唯一分发包为 @wahhheee/dsh-stash；core 和 devtools 均为私有工作区包。
@@ -111,6 +123,16 @@ memory_view ../<会话 ID>/RULES.md 或 ../<会话 ID>/notes/ 只读参考另一
 只在本会话或分支成立的内容写到 ./notes/；可复用经验写到 /notes/。提升笔记时先读取原文，再在 /notes/ 新建副本，frontmatter 的 sources 指回原会话完整引用，原笔记保留。记忆页支持直接编辑与提升副本；提升会自动在 sources 中保留原笔记引用。
 
 标准执行与 PTC 嵌套工具均支持会话记忆。子代理常驻上下文包含父会话当前规则，默认拒绝写入；开启 subagentWrite 后可写工作区及自己的会话。
+
+### 可选：在压缩时补记结论
+
+在 **DSH 设置 → stash → 压缩对话时补记笔记** 开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash，无需你审核。这是当前 DSH profile 的全局开关，默认关闭。如果你不知道这有什么用，请保持关闭。更改对所有工作区和已有会话的下一次压缩生效，无需重启。关闭不会删除已有笔记。
+
+此功能适用于 DSH 原装压缩器，沿用其模型、输出上限、阈值和保留策略。
+
+手动 `/compact` 和自动压缩采用相同流程。模型可以在副本中查看、修改和复核与这次对话有关的记忆，提交后自动应用。无须通读或整理整个记忆库。对其他会话也有用的结论进工作区，仅对当前会话有用的成果进会话层。例如「已核对两张底单，排除了抄录差错」可以补记；「下一步询问当班人」留给 DSH 摘要交接。
+
+无需补记时仅跳过记忆操作。无论有没有改动，DSH 都用原始对话生成自己的摘要；整理工具的对话不进入摘要输入。开启后会增加模型调用。只读时跳过补记；副本未提交或整理失败不会拦住摘要。已提交的笔记不因 DSH 拒绝过长的摘要而撤销。
 
 ## 原始记录与引用
 

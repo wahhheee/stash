@@ -16,6 +16,7 @@ import type {
 } from '../packages/plugin/src/page-types.ts';
 import { reconcile } from '../packages/devtools/src/reconcile.ts';
 import { join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 
 it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async () => {
   const fixture = await createHarnessFixture();
@@ -30,7 +31,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
     try {
       const invoke = await gateway(host.url);
       expect(await invoke('stash/getStatus', {})).toMatchObject({
-        version: '0.6.0',
+        version: '0.7.0',
         hostVersion: hostManifest.version,
         memoryEnabled: true,
       });
@@ -96,20 +97,20 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         content: 'WORKSPACE_SENTINEL',
         expected: null,
       });
-      const prompt = async () => {
+      const prompt = async (id = sessionId, text = '继续') => {
         const count = mock.requests.length;
         await invoke('session/prompt', {
           request: {
-            sessionId,
+            sessionId: id,
             requestId: randomUUID(),
             mode: 'queue',
-            content: [{ type: 'text', text: '继续' }],
+            content: [{ type: 'text', text }],
           },
         });
         expect(
           (
             await invoke<{ reason: string }>('session/wait', {
-              request: { sessionId, timeoutMs: 10000 },
+              request: { sessionId: id, timeoutMs: 10000 },
             })
           ).reason,
         ).toBe('idle');
@@ -166,7 +167,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         });
       expect((await execute('/stash status')).result).toMatchObject({
         kind: 'success',
-        text: expect.stringContaining('stash 0.6.0'),
+        text: expect.stringContaining('stash 0.7.0'),
       });
       const bundle = await execute('/stash doctor --bundle');
       expect(bundle.result.kind).toBe('success');
@@ -178,8 +179,81 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         fixture.env,
       );
       expect(verification).toContain('OK dsh');
+
+      const status = await invoke('stash/getStatus', {});
+      expect(status).toMatchObject({ compactionSupported: true });
+      const cwd = join(fixture.root, 'second-workspace');
+      await mkdir(cwd);
+      const second = await invoke<{ sessionId: string }>('session/create', { request: { cwd } });
+      expect(
+        (
+          await invoke<MemoryPageData>('stash/getMemory', {
+            target: { kind: 'session', id: second.sessionId },
+          })
+        ).workspaceId,
+      ).not.toBe(initial.workspaceId);
+      const compact = async (id: string, enabled: boolean) => {
+        await prompt(id, '作废的草稿。'.repeat(1200));
+        const n = mock.requests.length;
+        const res = await invoke<{ result: { kind: string; text: string } }>('commands/execute', {
+          agentId: id,
+          line: '/compact',
+          submittedAttachments: [],
+        });
+        expect(res.result.kind, res.result.text).toBe('success');
+        expect(mock.requests.length).toBe(n + (enabled ? 2 : 1));
+        const body = mock.requests[n]!.body as {
+          tools?: { name?: string; function?: { name: string } }[];
+        };
+        const names = (body.tools ?? []).map((t) => t.name ?? t.function?.name);
+        if (enabled)
+          expect(names).toEqual([
+            'memory_view',
+            'memory_write',
+            'stash_stage',
+            'stash_diff',
+            'stash_submit',
+          ]);
+        else expect(names).not.toContain('stash_submit');
+        expect(JSON.stringify(mock.requests.at(-1)!.body)).toContain('Pending Jobs');
+      };
+      const settings = await invoke<{
+        namespaces: { ns: string; value: unknown; revision: number }[];
+      }>('settings/describe', {});
+      const global = settings.namespaces.find((x) => x.ns === 'stash');
+      expect(global?.value).toMatchObject({ compactionNotes: false });
+      const toggle = (value: boolean, expectedRevision: number) =>
+        invoke<{ revision: number; value: unknown }>('settings/mutate', {
+          ns: 'stash',
+          ops: [{ op: 'set', path: ['compactionNotes'], value }],
+          expectedRevision,
+        });
+      await compact(second.sessionId, false);
+      const on = await toggle(true, global!.revision);
+      expect(on.value).toMatchObject({ compactionNotes: true });
+      await compact(sessionId, true);
+      await compact(second.sessionId, true);
+      const off = await toggle(false, on.revision);
+      await compact(sessionId, false);
+      await toggle(true, off.revision);
     } finally {
       await host.close();
+    }
+    const restarted = await startWebHost(fixture.home, {
+      ...fixture.env,
+      DEEPSEEK_BASE_URL: mock.baseURL,
+    });
+    try {
+      const invoke = await gateway(restarted.url);
+      const settings = await invoke<{ namespaces: { ns: string; value: unknown }[] }>(
+        'settings/describe',
+        {},
+      );
+      expect(settings.namespaces.find((s) => s.ns === 'stash')?.value).toMatchObject({
+        compactionNotes: true,
+      });
+    } finally {
+      await restarted.close();
     }
   } finally {
     await mock.close();

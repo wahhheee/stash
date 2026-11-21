@@ -15,7 +15,7 @@ import type {
   EventWindow,
   WorkspacePort,
 } from '@wahhheee/stash-core';
-import { foldSession, eventCommit } from './session-memory.ts';
+import { foldSession, eventCommits } from './session-memory.ts';
 import { commitFiles } from '@wahhheee/stash-core';
 import type { CommitState } from '@wahhheee/stash-core';
 import { digest } from './memory-store.ts';
@@ -103,7 +103,7 @@ export class DshHistory implements HistoryPort, WorkspacePort {
     );
     if (!prefix.length) return undefined;
     for (const event of exact ? [] : [...prefix].reverse()) {
-      const commit = eventCommit(event);
+      const commit = eventCommits(event).at(-1);
       const source = commit?.sessionId ?? eventResident(event)?.state.session?.id;
       if (source && source !== id) return { source, candidates: [source] };
     }

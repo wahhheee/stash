@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Context } from '@deepseek-ai/cordis';
+import { BasicCompactionEngine } from '@deepseek-ai/dsh-compaction-basic';
+import { watchCompaction } from '../src/adapters/compaction.ts';
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
@@ -20,6 +22,34 @@ import { FileTraceSink } from '../src/adapters/trace.ts';
 import { mountHistoryHost } from './history-host.ts';
 
 const cleanup: (() => Promise<void>)[] = [];
+
+it('按宿主生命周期接入原装压缩器，不接管第三方子类，卸载后恢复原方法', async () => {
+  const { ctx, adapter } = await fixture();
+  ctx.provide('stash', { compactionMemory: adapter });
+  const stock = ctx.isolate('compaction');
+  const foreign = ctx.isolate('compaction');
+
+  class ThirdParty extends BasicCompactionEngine {}
+
+  await foreign.plugin(ThirdParty, { auto: false });
+  let supported = () => false;
+  const watcher = ctx.plugin((scope) => {
+    supported = watchCompaction(scope, adapter, () => false);
+  });
+  await watcher;
+  expect(supported()).toBe(false);
+  const engine = stock.plugin(BasicCompactionEngine, { auto: false });
+  await engine;
+  expect(supported()).toBe(true);
+  expect(Object.hasOwn(stock.compaction, 'summarize')).toBe(true);
+  expect(Object.hasOwn(foreign.compaction, 'summarize')).toBe(false);
+  await engine.dispose();
+  expect(supported()).toBe(false);
+  await stock.plugin(BasicCompactionEngine, { auto: false });
+  expect(supported()).toBe(true);
+  await watcher.dispose();
+  expect(Object.hasOwn(stock.compaction, 'summarize')).toBe(false);
+});
 
 it('结构化编辑提供字段错误和独立回执，重试不重复创建且保留元信息', async () => {
   const { page, target, adapter } = await fixture();

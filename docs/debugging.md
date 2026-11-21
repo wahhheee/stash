@@ -45,6 +45,8 @@ memoryRoot/<WorkspaceId>/ 包含 workspace.json、RULES.md、notes/、.journal.j
 
 .journal.jsonl 每次只追加新记录。中断留下半条 JSON 时，只有存在匹配 pending 且完整前缀有效才允许恢复；没有 pending 或日志中间损坏会明确失败，不自动丢弃数据。pending 的操作已经记录时不重复追加。doctor、verify、journal 和 reconcile 不修复文件，需由正常宿主访问执行恢复。
 
+如果操作已记入日志，但正文被改回旧版，stash 会保留 `.pending.json` 并报告冲突。先备份工作区记忆目录，再对照正文、日志和 `.pending.json` 核实修改。
+
 单文件上限 32 MiB；修改日志和决策记录当前不自动清理，接近上限时应备份并安排后续维护。追加容量在替换记忆文件前检查。文件系统故障不报告写入成功。该事务处理进程中断，不承诺网络文件系统与突然断电的完整一致性。
 
 ## 离线工具

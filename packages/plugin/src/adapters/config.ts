@@ -5,6 +5,7 @@ import type { TraceLevel } from '@wahhheee/stash-core';
 
 export interface Config {
   enabled?: boolean;
+  compactionNotes?: boolean;
   subagentWrite?: boolean;
   trace?: TraceLevel;
   traceRetentionDays?: number;
@@ -17,8 +18,14 @@ export interface Config {
   externalRuleUpdates?: 'next-request' | 'next-compaction';
 }
 
-export const Config: Schema<Config> = Schema.object({
+export const Config = Schema.object({
   enabled: Schema.boolean().default(true).description('记忆总开关。'),
+  compactionNotes: Schema.boolean()
+    .default(false)
+    .description(
+      '开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash，无需你审核。如果你不知道这有什么用，请保持关闭。',
+    )
+    .volatile(),
   subagentWrite: Schema.boolean().default(false).description('允许子代理写入记忆。'),
   trace: Schema.union(['off', 'metadata', 'content'])
     .default('off')
@@ -70,7 +77,10 @@ export interface ResolvedConfig {
 }
 
 export function resolveConfig(input: Config = {}): ResolvedConfig {
-  const config = Config(input);
+  return resolveHostConfig(Config(input));
+}
+
+export function resolveHostConfig(config: ReturnType<typeof Config>): ResolvedConfig {
   const home = resolveDshHome();
   const root = config.memoryRoot?.trim();
   const expanded = root ? expandHomePath(root) : join(home, 'memory');

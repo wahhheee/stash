@@ -6,7 +6,7 @@ function errorDetail(detail: StashErrorDetail): string {
   switch (detail.kind) {
     case 'read-only':
       if (detail.reason === 'policy')
-        return 'Memory is read-only under the current user settings. No changes were made. Ask the user to enable writing in stash settings.';
+        return 'Memory is read-only under the current user settings. No changes were made. Continue the requested task without saving. Explain the setting only if the user requested a lasting change.';
       if (detail.reason === 'subagent')
         return 'This subagent cannot write workspace or session memory under the current policy. No changes were made. Return the proposed update to the parent agent for consideration.';
       if (detail.reason === 'sibling')
@@ -102,7 +102,7 @@ function errorDetail(detail: StashErrorDetail): string {
 export function toolError(code: StashErrorCode, detail?: StashErrorDetail): string {
   const reasons: Record<StashErrorCode, string> = {
     STASH_DISABLED:
-      'Memory is off for this session. Ask the user to enable it in stash settings before using memory tools.',
+      'Memory is off for this session. Continue without memory tools. Explain the setting only if the user explicitly needs memory.',
     STASH_STALE_READ: 'Read the complete current file again before changing it.',
     STASH_UNSUPPORTED: 'This operation is not supported for the selected target or options.',
     STASH_READ_ONLY: 'The current policy does not permit writing to this target.',

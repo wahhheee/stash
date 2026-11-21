@@ -18,7 +18,7 @@ export class StashRuntime {
     return {
       version: this.version,
       hostVersion: this.hostVersion,
-      phase: 6,
+      phase: 7,
       memoryEnabled: this.config.enabled,
       trace: this.trace.getLevel(),
     };
@@ -35,7 +35,6 @@ export class StashRuntime {
         text: [
           'stash ' + this.version,
           'DSH ' + this.hostVersion,
-          '阶段：6（增长与整理）',
           'memoryRoot: ' + this.config.memoryRoot,
           'trace: ' + this.trace.getLevel(),
         ].join('\n'),

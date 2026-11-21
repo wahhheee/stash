@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client';
@@ -70,7 +70,8 @@ export async function createHarnessFixture(): Promise<{
   sdk: (baseURL: string, workspace?: string, patches?: string[]) => DeepSeekHarness;
   close: () => Promise<void>;
 }> {
-  const root = await mkdtemp(join(tmpdir(), 'stash-e2e-'));
+  // 让 profile、工作区和插件链接都从同一条完整路径派生，包括 Windows 的临时目录。
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'stash-e2e-'));
   const home = join(root, 'home');
   const cwd = join(root, 'workspace');
   await mkdir(cwd, { recursive: true });

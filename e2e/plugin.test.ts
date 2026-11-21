@@ -184,7 +184,7 @@ it('模型请求期间的外部编辑在自身写入后补发，重启重放保�
   }
 });
 
-it('tarball 可安装到全新 profile，产物没有私有包运行时依赖', async () => {
+it.each(['压缩包', '解压目录'])('全新 profile 离线导入%s后可以写入记忆', async (mode) => {
   const fixture = await createHarnessFixture();
   try {
     const pnpmEntry = process.env.npm_execpath;
@@ -204,22 +204,43 @@ it('tarball 可安装到全新 profile，产物没有私有包运行时依赖', 
       resolve('.'),
       javascriptEntry ? process.execPath : pnpmEntry,
     );
-    const tarball = (await readdir(fixture.root)).find((name) => name.endsWith('.tgz'))!;
-    await fixture.cli('--profile', 'test', '--from-default-profile', 'sdk', '--dump-config');
-    await fixture.cli('plugin', '--profile', 'test', 'add', join(fixture.root, tarball));
-    expect(await fixture.cli('--profile', 'test', '--dump-config')).toContain(
-      '@wahhheee/dsh-stash',
+    const tarball = join(
+      fixture.root,
+      (await readdir(fixture.root)).find((n) => n.endsWith('.tgz'))!,
     );
-    const mock = await startMockLlmServer({ sequence: ['success'], successText: 'packed ok' });
+    let spec = tarball;
+    if (mode === '解压目录') {
+      await runNode(['-xzf', tarball, '-C', fixture.root], fixture.env, fixture.root, 'tar');
+      spec = join(fixture.root, 'package');
+    }
+    // 安装阶段使用空缓存和空存储，防止开发机已下载的依赖掩盖漏打包。
+    Object.assign(fixture.env, {
+      pnpm_config_offline: 'true',
+      pnpm_config_store_dir: join(fixture.root, 'store'),
+      pnpm_config_cache_dir: join(fixture.root, 'cache'),
+      npm_config_registry: 'http://127.0.0.1:1/',
+    });
+    await fixture.cli('--profile', 'test', '--from-default-profile', 'sdk', '--dump-config');
+    await fixture.cli('plugin', '--profile', 'test', 'add', spec);
+    const content = '每次活动通知注明集合时间。';
+    const mock = await startMockLlmServer({
+      sequence: ['tool_call_success', 'success'],
+      toolName: 'memory_write',
+      toolArguments: JSON.stringify({ path: '/RULES.md', op: 'create', content }),
+    });
     const harness = fixture.sdk(mock.baseURL);
     try {
-      expect((await harness.run('hello')).finalResponse).toBe('packed ok');
+      await harness.run('记住这条工作区规则。');
+      const memory = join(fixture.home, 'memory');
+      const workspaces = (await readdir(memory, { withFileTypes: true })).filter(
+        (entry) => entry.isDirectory() && !entry.name.startsWith('.'),
+      );
+      expect(workspaces).toHaveLength(1);
+      expect(await readFile(join(memory, workspaces[0]!.name, 'RULES.md'), 'utf8')).toBe(content);
     } finally {
       await harness.close();
       await mock.close();
     }
-    const source = await readFile('packages/plugin/lib/index.js', 'utf8');
-    expect(source).not.toContain("from '@wahhheee/stash-core'");
   } finally {
     await fixture.close();
   }

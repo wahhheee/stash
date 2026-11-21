@@ -29,10 +29,30 @@ check 依次执行格式、lint、构建、类型、单元/宿主/客户端和�
 
 ## 安装与使用
 
-先构建，再创建专用 Web profile 并链接本地包：
+### 在 DSH Desktop 中安装离线包
+
+1. 把 `wahhheee-dsh-stash-0.7.0.tgz` 解压到准备长期保留的位置。
+2. 在「插件 → 添加插件」中输入解压后 `package` 文件夹的绝对路径。选中的文件夹里应能直接看到 `package.json`、`lib` 和 `node_modules`。
+3. 启用 stash，然后从会话右侧栏打开它。DSH 会从这个目录加载插件，请保留整个文件夹。
+
+离线包已包含 stash 的运行依赖。使用源码开发时，也可以在构建后直接添加本仓库的 `packages/plugin` 目录。
+
+### 从源码构建和打包
+
+按上方「开发」安装依赖后，在仓库根目录执行：
 
 ```sh
 pnpm build
+pnpm --dir packages/plugin pack --pack-destination ../..
+```
+
+仓库根目录生成的 `.tgz` 就是可分发的离线包。
+
+### 在 Web profile 中使用
+
+要在本机试用开发版本，创建专用 Web profile 并链接构建好的插件目录：
+
+```sh
 pnpm exec dsh --profile stash-dev --from-default-profile web --dump-config
 pnpm exec dsh plugin --profile stash-dev add ./packages/plugin
 pnpm exec dsh --profile stash-dev --no-open
@@ -51,12 +71,9 @@ pnpm exec dsh --profile stash-dev --no-open
 /stash trace off
 ```
 
-Desktop：在“插件 → 添加插件”中输入 packages/plugin 的绝对目录，安装后启用，再从会话右侧栏打开 stash。desktop profile 由 Electron 管理，不能通过 CLI 修改。
-
-给其他机器试用时打包，并在目标机器安装生成的 tarball：
+已有 Web profile 时，也可以直接安装离线包：
 
 ```sh
-pnpm --dir packages/plugin pack --pack-destination ../..
 pnpm exec dsh plugin --profile stash-dev add ./wahhheee-dsh-stash-0.7.0.tgz
 ```
 

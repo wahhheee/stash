@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, readdir, realpath, writeFile, mkdir } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
@@ -211,7 +211,8 @@ it.each(['压缩包', '解压目录'])('全新 profile 离线导入%s后可以�
     let spec = tarball;
     if (mode === '解压目录') {
       await runNode(['-xzf', tarball, '-C', fixture.root], fixture.env, fixture.root, 'tar');
-      spec = join(fixture.root, 'package');
+      // DSH 按插件目录解析宿主依赖，传入 Windows 临时目录的短路径会导致激活失败。
+      spec = await realpath(join(fixture.root, 'package'));
     }
     // 安装阶段使用空缓存和空存储，防止开发机已下载的依赖掩盖漏打包。
     Object.assign(fixture.env, {
@@ -231,6 +232,9 @@ it.each(['压缩包', '解压目录'])('全新 profile 离线导入%s后可以�
     const harness = fixture.sdk(mock.baseURL);
     try {
       await harness.run('记住这条工作区规则。');
+      expect(mock.requests[0]?.body, 'DSH 应在首个请求中提供 stash 写入工具').toMatchObject({
+        tools: expect.arrayContaining([expect.objectContaining({ name: 'memory_write' })]),
+      });
       const memory = join(fixture.home, 'memory');
       const workspaces = (await readdir(memory, { withFileTypes: true })).filter(
         (entry) => entry.isDirectory() && !entry.name.startsWith('.'),

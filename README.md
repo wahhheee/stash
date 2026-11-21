@@ -32,7 +32,7 @@ check 依次执行格式、lint、构建、类型、单元/宿主/客户端和�
 ### 在 DSH Desktop 中安装离线包
 
 1. 把 `wahhheee-dsh-stash-0.7.0.tgz` 解压到准备长期保留的位置。
-2. 在「插件 → 添加插件」中输入解压后 `package` 文件夹的绝对路径。选中的文件夹里应能直接看到 `package.json`、`lib` 和 `node_modules`。
+2. 在「插件 → 添加插件」中输入解压后 `package` 文件夹的绝对路径。Windows 上请从资源管理器地址栏复制完整路径，含 `RUNNER~1` 这类缩写的路径可能导致启用失败。选中的文件夹里应能直接看到 `package.json`、`lib` 和 `node_modules`。
 3. 启用 stash，然后从会话右侧栏打开它。DSH 会从这个目录加载插件，请保留整个文件夹。
 
 离线包已包含 stash 的运行依赖。使用源码开发时，也可以在构建后直接添加本仓库的 `packages/plugin` 目录。

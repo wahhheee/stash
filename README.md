@@ -16,18 +16,42 @@ stash 在模型请求前比较当前记忆与对话中已经可见的内容。�
 
 ### DSH Desktop
 
-1. 将 stash 离线包（`.tgz`）解压到长期保留的目录。打开解压后的 `package` 文件夹，里面应有 `package.json`、`lib` 和 `node_modules`。
-2. 在 DSH Desktop 打开 **插件 → 添加插件**，输入这个 `package` 文件夹的绝对路径。Windows 可从资源管理器地址栏复制完整路径。
-3. 启用 **stash**，在会话右侧栏打开 **stash**。DSH 会持续从所选目录加载插件。
+在 **插件 → 添加插件** 中输入 npm 包名 `@wahhheee/dsh-stash` 并安装。启用 **stash** 后，可在会话右侧栏打开它。如果所选镜像还查不到包，可将安装源切换到 npm 官方源。插件包 `package.json` 中的 `engines.dsh` 标明兼容的 DSH 版本。
 
-离线包自带运行依赖。插件清单的 `engines.dsh` 指明所需的 DSH 版本。
+### 使用 npx 安装
 
-### DSH Web
-
-在已有 Web profile 中，用 DSH CLI 安装离线包。将 `PROFILE` 替换为 profile 名称，最后一个参数填入本机的包路径。
+先打开一次 DSH Desktop，完全退出后运行：
 
 ```sh
-dsh plugin --profile PROFILE add /path/to/stash.tgz
+npx @wahhheee/dsh-stash
+```
+
+默认安装到 `desktop`。要装到 Web 或其他 profile，可以指定名称：
+
+```sh
+npx @wahhheee/dsh-stash --profile web
+```
+
+Windows 上会查找 Desktop 的标准安装目录。自定义安装位置可以通过 `--dsh` 指定，在 Desktop 的命令设置中复制 `dsh.cmd` 的完整路径：
+
+```powershell
+npx @wahhheee/dsh-stash --dsh "D:\Apps\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+```
+
+### 使用 DSH CLI 安装
+
+```sh
+dsh plugin --profile web add @wahhheee/dsh-stash
+```
+
+### 离线安装
+
+离线包（`.tgz`）自带运行依赖。使用 DSH Desktop 时，将它解压到长期保留的目录，在 **插件 → 添加插件** 中输入解压后的 `package` 文件夹的绝对路径，然后启用 **stash**。DSH 会持续从该目录加载插件。
+
+使用 DSH CLI 时，可以直接安装 `.tgz` 文件：
+
+```sh
+dsh plugin --profile web add /path/to/stash.tgz
 ```
 
 ### 从源码安装

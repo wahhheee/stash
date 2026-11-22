@@ -79,6 +79,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         if (!status.ok) throw status.error;
         return status.value.compactionSupported === true;
       };
+      settings.slots.inject('settings.section.icon', () =>
+        settings.slots.register({ name: 'settings.section.icon', id: 'stash' }, StashIcon),
+      );
       settings.slots.inject('settings.section', () =>
         settings.slots.register(
           {

@@ -4,6 +4,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import { expect, it, vi } from 'vitest';
 import * as client from '../src/client/index.tsx';
 import type { MemoryPanelProps } from '../src/client/MemoryPanel.tsx';
+import { StashIcon } from '../src/client/StashIcon.tsx';
 import { zh } from '../src/client/locales.ts';
 
 it('输入框打开会话设置，工作区菜单仅提供该工作区的设置，来源导航可用', async () => {
@@ -35,14 +36,18 @@ it('输入框打开会话设置，工作区菜单仅提供该工作区的设置�
   ctx.provide('uiWorkspace', { openSession, openWorkspace });
   ctx.provide('slots', {
     inject: (_name: string, callback: () => () => void) => callback(),
-    register: (seat: { name: string; inject: (id: string) => Partial<MemoryPanelProps> }) => {
+    register: vi.fn((seat: { name: string; inject: (id: string) => Partial<MemoryPanelProps> }) => {
       seats.set(seat.name, seat);
       return () => seats.delete(seat.name);
-    },
+    }),
   });
   try {
     await ctx.plugin(client);
     expect(seats.get('settings.section')).toMatchObject({ id: 'stash' });
+    expect(ctx.slots.register).toHaveBeenCalledWith(
+      { name: 'settings.section.icon', id: 'stash' },
+      StashIcon,
+    );
     const input = seats.get('conversation.input.left')!.inject('current');
     expect(input.compact).toBe(true);
     input.openPage!();

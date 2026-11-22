@@ -221,21 +221,21 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         namespaces: { ns: string; value: unknown; revision: number }[];
       }>('settings/describe', {});
       const global = settings.namespaces.find((x) => x.ns === 'stash');
-      expect(global?.value).toMatchObject({ compactionNotes: false });
+      expect(global?.value).toMatchObject({ compactionNotes: true });
       const toggle = (value: boolean, expectedRevision: number) =>
         invoke<{ revision: number; value: unknown }>('settings/mutate', {
           ns: 'stash',
           ops: [{ op: 'set', path: ['compactionNotes'], value }],
           expectedRevision,
         });
-      await compact(second.sessionId, false);
-      const on = await toggle(true, global!.revision);
-      expect(on.value).toMatchObject({ compactionNotes: true });
-      await compact(sessionId, true);
       await compact(second.sessionId, true);
-      const off = await toggle(false, on.revision);
+      const off = await toggle(false, global!.revision);
+      expect(off.value).toMatchObject({ compactionNotes: false });
       await compact(sessionId, false);
-      await toggle(true, off.revision);
+      await compact(second.sessionId, false);
+      const on = await toggle(true, off.revision);
+      await compact(sessionId, true);
+      await toggle(false, on.revision);
     } finally {
       await host.close();
     }
@@ -250,7 +250,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         {},
       );
       expect(settings.namespaces.find((s) => s.ns === 'stash')?.value).toMatchObject({
-        compactionNotes: true,
+        compactionNotes: false,
       });
     } finally {
       await restarted.close();

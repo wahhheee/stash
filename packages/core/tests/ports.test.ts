@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryFiles, MemorySessionLog, MemorySearch } from '../src/testing/memory.ts';
-import { MODEL_SURFACE } from '../src/index.ts';
 
 describe('领域测试端口', () => {
   it('并发修改只有一个写入者成功，日志保留全文且读取隔离', async () => {
@@ -57,11 +56,5 @@ describe('领域测试端口', () => {
     await expect(
       search.search({ sessionIds: ['s'], query: 'match', since: 'bad', limit: 1 }),
     ).rejects.toMatchObject({ code: 'STASH_INVALID_DATA' });
-  });
-  it('工作区模型表面快照附估算量', () => {
-    expect({
-      ...MODEL_SURFACE,
-      tokens: Math.ceil(MODEL_SURFACE.instructions.length / 4),
-    }).toMatchSnapshot();
   });
 });

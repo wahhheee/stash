@@ -11,7 +11,7 @@ it('复制链接粘贴后通过真实 SDK 工具读取已压缩冷会话的原�
     repeatLast: true,
     successText: '昨晚的架构结论：保留字面扫描',
   });
-  let reference = '';
+  let id: string;
   try {
     await fixture.cli('--profile', 'test', '--from-default-profile', 'sdk', '--dump-config');
     await fixture.cli('plugin', '--profile', 'test', 'add', resolve('packages/plugin'));
@@ -20,11 +20,10 @@ it('复制链接粘贴后通过真实 SDK 工具读取已压缩冷会话的原�
       const source = host.session();
       await source.run('讨论架构取舍');
       await source.run('/compact');
-      reference = 'dsh://session/' + source.id;
+      id = source.id;
     } finally {
       await host.close();
     }
-    const id = reference.split('/').at(-1)!;
     const outline = await viewHistory(join(fixture.home, 'sessions'), fixture.cwd, id, {
       path: './log/turns',
     });

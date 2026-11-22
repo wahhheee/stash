@@ -4,16 +4,16 @@ import type {
   MaintenanceData,
   MaintenanceMode,
 } from '../adapters/maintenance-schema.ts';
-import { randomUuid } from '@deepseek-ai/dsh-client-connection/src/client/random-uuid.ts';
-import { Button } from './memory-controls.tsx';
-import type { Translate } from './memory-controls.tsx';
 import {
+  randomUuid,
   IconLayersOutlineRegular,
   IconPlusOutlineRegular,
   IconChevronRightOutlineRegular,
   IconClockOutlineRegular,
   IconArchiveOutlineRegular,
-} from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
+} from './dsh-ui.ts';
+import { Button } from './memory-controls.tsx';
+import type { Translate } from './memory-controls.tsx';
 import { MaintenanceOverview, PlanReview } from './MaintenanceDetails.tsx';
 import styles from './MaintenancePanel.module.css';
 
@@ -43,7 +43,7 @@ export function MaintenancePanel({
   activity?:
     { subscribe: (listener: () => void) => () => void; getSnapshot: () => string } | undefined;
   t: Translate;
-  openSession?: ((id: string) => void) | undefined;
+  openSession?: ((id: string) => void | Promise<void>) | undefined;
   enabled: boolean;
   sessionLabel?: ((id: string) => { title?: string; updatedAt: number } | undefined) | undefined;
   refreshKey?: number;

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { resolveSwitches } from '@wahhheee/stash-core';
-import { Menu } from '@deepseek-ai/dsh-client-ui-primitives/src/Menu.tsx';
-import { randomUuid } from '@deepseek-ai/dsh-client-connection/src/client/random-uuid.ts';
 import {
+  Menu,
+  randomUuid,
   IconChevronLeftOutlineRegular,
   IconPlusOutlineRegular,
   IconEllipsisOutlineRegular,
-} from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
+} from './dsh-ui.ts';
 import type {
   MemoryPageData,
   PageEdit,

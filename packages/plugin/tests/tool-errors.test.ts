@@ -129,7 +129,7 @@ it('重复 create 明确提示更新操作，读取后重试 create 仍拒绝，
 });
 
 it('规则清空、归档和删除回执准确，会话删除不再声称笔记仍被索引', async () => {
-  const { call, session } = await fixture();
+  const { call, session, snapshot } = await fixture();
   for (const path of ['/RULES.md', './RULES.md']) {
     await call('memory_write', { path, op: 'create', content: '规则' });
     await call('memory_view', { path });
@@ -148,6 +148,11 @@ it('规则清空、归档和删除回执准确，会话删除不再声称笔记�
     expect(archived.text).toContain('existing rules imports remain active');
     expect(archived.text).not.toContain('promote');
     expect((await call('memory_view', { path })).text).toContain('status: archived');
+    const before = await snapshot();
+    const malformed = await call('memory_write', { path, op: 'delete', content: '' });
+    expect(malformed.failed).toBe(true);
+    expect(malformed.text).toContain('STASH_INVALID_DATA');
+    expect(await snapshot()).toEqual(before);
     const deleted = await call('memory_write', { path, op: 'delete' });
     expect(deleted.failed).toBe(false);
     expect(deleted.text).toContain('Deleted ' + path);

@@ -1,10 +1,6 @@
 # stash 调试手册
 
-## 开发验证
-
-Node.js 22.18+、pnpm 12.18.0。执行 pnpm install --frozen-lockfile，再运行 pnpm check。检查顺序是格式、lint、构建、类型、单元/宿主/客户端和真实进程端到端。仅构建产物位于 packages/plugin/lib；根 README 和 LICENSE 随构建复制，不提交生成文件。
-
-普通测试只使用本地 mock，每个测试使用临时 DSH_HOME、DSH_AGENTS_HOME 和独立工作区，不读取日常 profile 或凭据。链接开发循环为修改、pnpm build、重启专用 profile、刷新页面。Desktop 安装使用插件管理器，不通过 CLI 修改保留的 desktop profile。
+开发环境与隔离 profile 的配置见[贡献指南](../CONTRIBUTING.md)。
 
 ## 命令
 
@@ -68,13 +64,11 @@ pnpm devtools view /path/to/memory/WORKSPACE_ID ./RULES.md /path/to/DSH_HOME/ses
 
 历史 view 使用同一渲染器，自动续读所有页面。离线会话清单仅按工作区最后已知路径与 cwd 精确匹配，工作区改名后用完整引用读取。STASH_SCOPE_REQUIRED 表示应指定会话或时间窗；STASH_AMBIGUOUS_REF 要求更长 ID；STASH_HISTORY_UNREADABLE 和 STASH_SEARCH_FAILED 表示读取失败，与 no-match 不同。续读 STASH_STALE_READ 时从第一页重新开始。
 
-阶段三扫描基准：pnpm exec tsx packages/devtools/src/benchmark-history.ts [输出目录]。默认写入 .exclude/history-benchmark，生成独立测试日志，不使用日常 DSH_HOME。测量范围和限制见 0004 决策记录。
-
 reconcile 使用宿主 persistence 的 read 句柄和 Session surface 投影，按决策记录引用的修改日志 ID 重建当时的实际记忆，再核对决策与实际消息。需要同时保留会话日志、工作区修改日志和决策记录；不靠当前文件或时间戳猜测历史。输出区分 OK 和没有发出模型请求的尝试，缺失材料明确失败。
 
 verify 检查版本、哈希链、文件与日志的一致性、锁、pending 和 trace。尚未观察到的外部编辑会暂时报不一致，宿主发现并记录后可消除；同时间同大小修改须先显式读取或重建缓存。成功退出 0，检查失败 1，参数错误 2。未知 workspace 格式不覆盖。
 
-正常 memory_write 成功结果只显示路径、预算和 replace 删除的行。若请求与写入之间出现外部规则变化，下一请求可以补发包含自身修改的差异；这是保守确认，不代表写入重复执行。新引入规则引用、嵌套调用也可能补发。排查时使用 context 和 explain 比较可见状态；reconcile 同时支持缺少 trusted 字段的旧记录和新记录。
+正常 memory_write 成功结果只显示路径、预算和 replace 删除的行。若请求与写入之间出现外部规则变化，下一请求可以补发包含自身修改的差异；这是保守确认，不代表写入重复执行。写入规则引用、嵌套调用也可能补发。排查时使用 context 和 explain 比较可见状态；reconcile 同时支持缺少 trusted 字段的记录和带该字段的记录。
 
 ## 会话记忆故障
 
@@ -93,14 +87,6 @@ trace 默认 off；metadata 只记录白名单元数据，content 允许正文�
 决策记录独立于 trace，始终只包含位置、版本 ID、配置、原因和哈希，没有正文。它用于重放，当前没有自动保留期限。该文件仍完整校验并整体原子替换；追加与 pending 恢复只用于修改日志。长会话的决策记录仍有随历史增长的读写成本。
 
 报告在 .reports/stash-UUID.json.gz，format: 1，包含版本、生效配置、doctor 结果与至多 200 条 trace 元数据。始终剥离正文，不自动附记忆、决策记录或会话日志；文件读取和解压上限各 8 MiB。不要直接对外发送含全文的 journal。
-
-## 行为评估
-
-packages/devtools/src/evaluation.ts 导出四个阶段二任务及 evaluateBehavior。运行器提供隔离会话执行、每次任务的 token/延迟、人工或外部判定的 passed、scopeExpanded、openedBody 和 evidence；框架支持重复执行并汇总遵守率、条件扩大率与索引直接成功率。普通测试只验证框架统计，未运行真实模型评估，也不把 mock 的成功当成真实行为成绩。
-
-## 验证范围
-
-本地 Windows 覆盖核心解析、预算、模板、缓存命中与失效、追加日志残片恢复、两个独立 Node 进程并发、Cordis 生命周期、客户端、真实 SDK、多会话共享、简短写入确认、请求期间的外部编辑与补发、重启、/compact 恢复、离线 reconcile、Web Gateway 和 tarball 安装。Linux/macOS 结果以 CI 为准。阶段四包含标准/PTC 多次嵌套读写、分叉前缀、缓存删除重建、子代理策略、提升和跨会话只读验收。阶段二未执行 Desktop 人工视觉检查；阶段一的隔离 Desktop 安装记录见 0001 决策记录。
 
 ## 整理中断或回滚被拒绝
 

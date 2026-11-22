@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { resolveSwitches } from '@wahhheee/stash-core';
 import type { SwitchRecord } from '@wahhheee/stash-core';
-import { Menu } from '@deepseek-ai/dsh-client-ui-primitives/src/Menu.tsx';
-import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives/src/Menu.tsx';
-import { IconWarningTriangleOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
+import { Menu, type MenuEntry, IconWarningTriangleOutlineRegular } from './dsh-ui.ts';
 import { Button, Choice, Switch } from './memory-controls.tsx';
 import type { Translate } from './memory-controls.tsx';
 import type { MemoryPageData } from '../page-types.ts';

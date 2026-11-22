@@ -25,14 +25,13 @@ const boot = async () => {
   };
 };
 
-let { ctx, history } = await boot();
+let { ctx } = await boot();
 
-let workspaceId = '',
-  bytes = 0;
+let bytes = 0;
 
 try {
   const workspace = await ctx.workspaceRegistry.create(root);
-  workspaceId = workspace.id;
+  const workspaceId = workspace.id;
   for (let n = 0; n < 28; n++) {
     const session = ctx.sessions.create(SessionId('session-benchmark-' + n), {
       meta: { cwd: root, createdAt: Date.UTC(2026, 10, 9) + Math.floor(n / 4) * 86400000 },
@@ -79,7 +78,9 @@ try {
     await ctx.sessionProjectionCache.write(session);
   }
   await ctx.fiber.dispose();
-  ({ ctx, history } = await boot());
+  const rebooted = await boot();
+  ctx = rebooted.ctx;
+  const { history } = rebooted;
   const times: number[] = [];
   for (let i = 0; i < 4; i++) {
     const browser = new HistoryBrowser(

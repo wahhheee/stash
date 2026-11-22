@@ -51,6 +51,17 @@ it('按宿主生命周期接入原装压缩器，不接管第三方子类，卸�
   expect(Object.hasOwn(stock.compaction, 'summarize')).toBe(false);
 });
 
+it('并发打开同一会话时共享待提交写入', async () => {
+  const { adapter, agent } = await fixture();
+  const [writer, reader] = await Promise.all([
+    adapter.sessionMemory(agent),
+    adapter.sessionMemory(agent),
+  ]);
+  writer.store.begin('root');
+  await writer.memory.write({ path: '/RULES.md', op: 'create', content: '同一轮的规则' }, 'write');
+  expect((await reader.memory.actual()).rules).toBe('同一轮的规则');
+});
+
 it('结构化编辑提供字段错误和独立回执，重试不重复创建且保留元信息', async () => {
   const { page, target, adapter } = await fixture();
   const value = {

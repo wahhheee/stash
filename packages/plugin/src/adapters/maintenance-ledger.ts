@@ -1,4 +1,4 @@
-import type { JournalChange } from './memory-store.ts';
+import type { JournalChange } from './journal.ts';
 import { resolveRedirect, notePath, StashError } from '@wahhheee/stash-core';
 import type { NoteUsage } from '@wahhheee/stash-core';
 import type { statsSchema } from './maintenance-schema.ts';

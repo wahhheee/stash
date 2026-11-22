@@ -1,3 +1,4 @@
+import manifest from '../packages/plugin/package.json' with { type: 'json' };
 import { gateway } from './gateway.ts';
 import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
@@ -31,7 +32,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
     try {
       const invoke = await gateway(host.url);
       expect(await invoke('stash/getStatus', {})).toMatchObject({
-        version: '0.7.0',
+        version: manifest.version,
         hostVersion: hostManifest.version,
         memoryEnabled: true,
       });
@@ -167,7 +168,7 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
         });
       expect((await execute('/stash status')).result).toMatchObject({
         kind: 'success',
-        text: expect.stringContaining('stash 0.7.0'),
+        text: expect.stringContaining('stash ' + manifest.version),
       });
       const bundle = await execute('/stash doctor --bundle');
       expect(bundle.result.kind).toBe('success');

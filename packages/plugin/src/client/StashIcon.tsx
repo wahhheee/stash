@@ -1,4 +1,4 @@
-import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
+import type { IconProps } from './dsh-ui.ts';
 import artwork from '../../icon.svg';
 
 // 宿主入口取前景色，未指定尺寸时填满菜单或按钮的图标槽。

@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { CompactionCopy } from '../host/compaction-copy.ts';
 import { validatePlan } from '../host/maintenance.ts';
 import type { MemoryAdapter } from './memory-dsh.ts';
-import { digest, snapshotRevision } from './memory-store.ts';
+import { digest, snapshotRevision } from './revision.ts';
 import { isMaintenance } from './maintenance-schema.ts';
 import { appendCompactionBatch, validateCommit } from './session-memory.ts';
 import { runStageTool } from './stage-tools.ts';

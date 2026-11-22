@@ -21,7 +21,7 @@ import type {
   WriteInput,
 } from '@wahhheee/stash-core';
 import type { FileMemoryStore } from '../adapters/memory-store.ts';
-import { digest } from '../adapters/memory-store.ts';
+import { digest } from '../adapters/revision.ts';
 import { containsSecret } from '../adapters/redaction.ts';
 
 export type MemoryBackend = Pick<FileMemoryStore, 'observe' | 'snapshot' | 'read' | 'transact'> &

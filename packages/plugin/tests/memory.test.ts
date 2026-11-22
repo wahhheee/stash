@@ -11,7 +11,8 @@ import {
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it, vi } from 'vitest';
-import { FileMemoryStore, memoryFile } from '../src/adapters/memory-store.ts';
+import { FileMemoryStore } from '../src/adapters/memory-store.ts';
+import { memoryFile } from '../src/adapters/revision.ts';
 import { WorkspaceMemory } from '../src/host/memory.ts';
 import type * as Fs from 'node:fs/promises';
 import { residentSchema } from '../src/adapters/memory-records.ts';

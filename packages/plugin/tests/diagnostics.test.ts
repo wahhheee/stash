@@ -1,3 +1,4 @@
+import installedHost from '@deepseek-ai/dsh/package.json' with { type: 'json' };
 import { mkdtemp, readFile, readdir, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -77,9 +78,11 @@ describe('诊断基础设施', () => {
       code: 'sk-' + 'a'.repeat(30),
       content: 'private text',
     });
-    const checks = await doctor(config, '0.2.2-rc.5');
+    const checks = await doctor(config, installedHost.version);
     expect(checks.every((c) => c.ok)).toBe(true);
-    const report = await readReport(await writeReport(config, '0.1.0', '0.2.2-rc.5', checks));
+    const report = await readReport(
+      await writeReport(config, '0.1.0', installedHost.version, checks),
+    );
     expect(report.phase).toBe(7);
     expect(report.trace).toHaveLength(1);
     expect(report.trace[0]).not.toHaveProperty('content');
@@ -98,15 +101,10 @@ describe('诊断基础设施', () => {
     await writeFile(join(root, '.trace', 'broken.jsonl'), '{');
     expect((await inspectRoot(root)).some((c) => !c.ok)).toBe(true);
   });
-  it.each([
-    ['0.2.2-rc.4', false],
-    ['0.2.2-rc.5', true],
-    ['0.2.2', false],
-    ['0.3.0-rc.1', false],
-  ] as const)('doctor 检查宿主版本 %s', async (version, ok) => {
+  it('doctor 报告宿主清单范围之外的版本', async () => {
     const config = resolveConfig({ memoryRoot: await temporary() });
-    expect(await doctor(config, version)).toContainEqual(
-      expect.objectContaining({ name: 'dsh', ok }),
+    expect(await doctor(config, '0.0.0-unsupported')).toContainEqual(
+      expect.objectContaining({ name: 'dsh', ok: false }),
     );
   });
   it('trace 的磁盘故障不会伪装成功', async () => {
@@ -133,7 +131,7 @@ describe('诊断基础设施', () => {
       trace: 'off' as const,
       traceRetentionDays: 7,
     };
-    const runtime = new StashRuntime(config, '0.1.0', '0.2.2-rc.5');
+    const runtime = new StashRuntime(config, '0.1.0', installedHost.version);
     expect((await runtime.command('status extra')).kind).toBe('error');
     expect((await runtime.command('trace metadata')).kind).toBe('success');
     expect(runtime.status().trace).toBe('metadata');

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ReferenceIconRegular } from '@deepseek-ai/dsh-client-ui-primitives/src/ReferenceIcon.tsx';
-import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives/src/Tooltip.tsx';
 import {
+  ReferenceIconRegular,
+  Tooltip,
   IconCheckOutlineRegular,
   IconCloseOutlineRegular,
-} from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
+} from './dsh-ui.ts';
 import { sessionRef } from '@wahhheee/stash-core/refs';
 import type { StashReference } from '../types.ts';
 import type { LocaleKey } from './locales.ts';

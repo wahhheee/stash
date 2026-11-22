@@ -1,3 +1,13 @@
+import {
+  changeSchema,
+  parseJournal,
+  validateChange,
+  appendText,
+  acceptChange,
+  type JournalChange,
+  type JournalCache,
+} from './journal.ts';
+import { digest, memoryFile, snapshotRevision } from './revision.ts';
 import { ledger } from './maintenance-ledger.ts';
 import type { Stats } from './maintenance-ledger.ts';
 import { runId, draftSchema, statsSchema } from './maintenance-schema.ts';
@@ -6,7 +16,7 @@ import { fileChanges, editStage, stagePreview, validateStagePaths } from './stag
 import type { StageEdit } from './stage-files.ts';
 import { resolveRedirect, previewPlan, notePath } from '@wahhheee/stash-core';
 import type { PlanChange, PlanPreview } from '@wahhheee/stash-core';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readFile, readdir, rename, rm, unlink, link } from 'node:fs/promises';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
@@ -17,27 +27,6 @@ import { containsSecret } from './redaction.ts';
 import { auditSchema } from './memory-records.ts';
 import { memoryPath, StashError } from '@wahhheee/stash-core';
 import type { MemoryChange, MemoryFile, MemoryStore } from '@wahhheee/stash-core';
-
-const fileSchema = z.object({ content: z.string(), revision: z.string() }).strict();
-
-const changeSchema = z
-  .object({
-    v: z.literal(1),
-    id: z.string(),
-    workspaceId: z.string(),
-    path: z.string(),
-    before: fileSchema.nullable(),
-    after: fileSchema.nullable(),
-    timestamp: z.iso.datetime(),
-    actor: z.string(),
-    callId: z.string(),
-    op: z.string(),
-    group: runId.optional(),
-    redirect: z.string().optional(),
-  })
-  .strict();
-
-export type JournalChange = z.infer<typeof changeSchema>;
 
 export const workspaceSchema = z
   .object({
@@ -51,32 +40,10 @@ export const workspaceSchema = z
 
 export type WorkspaceInfo = z.infer<typeof workspaceSchema>;
 
-export function digest(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
-}
-
-export function memoryFile(content: string): MemoryFile {
-  return { content, revision: digest(content) };
-}
-
-export function snapshotRevision(files: ReadonlyMap<string, string>): string {
-  return digest(JSON.stringify([...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))));
-}
-
 interface CachedFile {
   mtimeMs: number;
   size: number;
   file: MemoryFile;
-}
-
-interface JournalCache {
-  mtimeMs: number | null;
-  size: number;
-  changes: JournalChange[];
-  states: Map<string, MemoryFile | null>;
-  ids: Set<string>;
-  terminated: boolean;
-  aliases?: Map<string, string>;
 }
 
 interface WorkspaceCache {
@@ -303,73 +270,18 @@ export class FileMemoryStore implements MemoryStore {
     )
       return cache.journal;
     const text = stat ? await readFile(path, 'utf8') : '';
-    const journal = this.parseJournal(id, text);
+    const journal = parseJournal(id, text);
     journal.mtimeMs = stat?.mtimeMs ?? null;
     journal.size = stat?.size ?? 0;
     cache.journal = journal;
     return journal;
   }
 
-  private parseJournal(id: string, text: string): JournalCache {
-    const changes = text
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => changeSchema.parse(JSON.parse(line)));
-    const journal: JournalCache = {
-      mtimeMs: null,
-      size: 0,
-      changes: [],
-      states: new Map(),
-      ids: new Set(),
-      terminated: !text || text.endsWith('\n'),
-    };
-    for (const change of changes) this.acceptChange(id, journal, change);
-    return journal;
-  }
-
-  private validateChange(id: string, change: JournalChange): void {
-    memoryPath(change.path, true);
-    if (
-      Boolean(change.group) !== ['maintenance', 'rollback'].includes(change.op) ||
-      (change.group && (change.group !== change.actor || change.group !== change.callId)) ||
-      (change.redirect &&
-        (!change.group ||
-          (change.op === 'maintenance'
-            ? change.after !== null || change.before === null
-            : change.before !== null || change.after === null)))
-    )
-      throw new StashError('STASH_INVALID_DATA', '整理日志标识或跳转记录无效');
-    if (change.redirect) {
-      notePath(change.path);
-      notePath(change.redirect);
-    }
-    if (change.workspaceId !== id) throw new StashError('STASH_INVALID_DATA', '修改日志工作区不符');
-    for (const file of [change.before, change.after]) {
-      if (file && digest(file.content) !== file.revision)
-        throw new StashError('STASH_INVALID_DATA', '修改日志哈希损坏');
-      if (file && containsSecret(file.content))
-        throw new StashError('STASH_SECRET', '修改记录包含凭据');
-    }
-  }
-
-  private acceptChange(id: string, journal: JournalCache, change: JournalChange): void {
-    this.validateChange(id, change);
-    if (
-      journal.ids.has(change.id) ||
-      (journal.states.get(change.path)?.revision ?? null) !== (change.before?.revision ?? null)
-    )
-      throw new StashError('STASH_INVALID_DATA', '修改日志链损坏');
-    if (change.group || change.callId === 'clear') delete journal.aliases;
-    journal.changes.push(change);
-    journal.ids.add(change.id);
-    journal.states.set(change.path, change.after);
-  }
-
   private async append(id: string, change: JournalChange): Promise<void> {
     const path = join(this.directory(id), '.journal.jsonl');
     const journal = await this.loadJournal(id);
-    const text = this.appendText(journal, change);
-    this.acceptChange(id, journal, change);
+    const text = appendText(journal, change);
+    acceptChange(id, journal, change);
     try {
       const file = await open(path, 'a', 0o600);
       try {
@@ -388,13 +300,6 @@ export class FileMemoryStore implements MemoryStore {
     }
   }
 
-  private appendText(journal: JournalCache, change: JournalChange): string {
-    const text = (journal.terminated ? '' : '\n') + JSON.stringify(change) + '\n';
-    if (journal.size + Buffer.byteLength(text) > 32 * 1024 * 1024)
-      throw new StashError('STASH_INVALID_DATA', '修改日志超过 32 MiB', { kind: 'storage-size' });
-    return text;
-  }
-
   /** 只有 pending 能证明归属的尾部残片才允许修复；已完成的行始终严格校验。 */
   private async recoverJournal(id: string, change: JournalChange): Promise<JournalCache> {
     const path = join(this.directory(id), '.journal.jsonl');
@@ -404,7 +309,7 @@ export class FileMemoryStore implements MemoryStore {
     const end = bytes.lastIndexOf(10) + 1;
     const prefix = bytes.subarray(0, end);
     const tail = bytes.subarray(end);
-    const journal = this.parseJournal(id, prefix.toString('utf8'));
+    const journal = parseJournal(id, prefix.toString('utf8'));
     const expected = Buffer.from(JSON.stringify(change) + '\n');
     // 完整且有效的旧日志允许没有末尾换行；追加时补上分隔符。
     try {
@@ -412,7 +317,7 @@ export class FileMemoryStore implements MemoryStore {
     } catch {
       if (tail.length >= expected.length || !tail.equals(expected.subarray(0, tail.length)))
         throw new StashError('STASH_INVALID_DATA', '日志尾部与待提交记录不符');
-      this.acceptChange(id, journal, change);
+      acceptChange(id, journal, change);
       const file = await open(path, 'r+');
       try {
         await file.truncate(end);
@@ -441,7 +346,7 @@ export class FileMemoryStore implements MemoryStore {
     )
       throw new StashError('STASH_INVALID_DATA', '整理恢复记录重复');
     for (const c of batch.changes) {
-      this.validateChange(id, c);
+      validateChange(id, c);
       if (!c.group || c.group !== first.group || c.op !== first.op)
         throw new StashError('STASH_INVALID_DATA', '整理恢复记录无效');
     }
@@ -484,7 +389,7 @@ export class FileMemoryStore implements MemoryStore {
     const raw = await readOptional(pending);
     if (raw === null) return;
     const change = changeSchema.parse(JSON.parse(raw));
-    this.validateChange(id, change);
+    validateChange(id, change);
     const current = await this.read(id, change.path);
     const revision = current?.revision ?? null;
     if (
@@ -503,7 +408,7 @@ export class FileMemoryStore implements MemoryStore {
         kind: 'recovery-conflict',
       });
     if (!recorded) {
-      this.appendText(journal, change);
+      appendText(journal, change);
       if ((journal.states.get(change.path)?.revision ?? null) !== (change.before?.revision ?? null))
         throw new StashError('STASH_INVALID_DATA', '待提交记录与日志链不符');
       await this.replace(id, change.path, change.after?.content ?? null);
@@ -556,7 +461,7 @@ export class FileMemoryStore implements MemoryStore {
             callId: '',
             op: 'external',
           };
-          this.appendText(await this.loadJournal(id), change);
+          appendText(await this.loadJournal(id), change);
           const pending = join(this.directory(id), '.pending.json');
           await atomic(pending, JSON.stringify(change));
           await this.append(id, change);
@@ -660,7 +565,7 @@ export class FileMemoryStore implements MemoryStore {
         op,
       };
       const pending = join(this.directory(id), '.pending.json');
-      this.appendText(await this.loadJournal(id), change);
+      appendText(await this.loadJournal(id), change);
       await atomic(pending, JSON.stringify(change));
       await this.replace(id, path, result.content);
       await this.append(id, change);

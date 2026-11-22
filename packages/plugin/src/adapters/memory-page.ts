@@ -15,7 +15,7 @@ import {
   mergeNoteForm,
 } from '@wahhheee/stash-core';
 import { commitMessage } from './session-memory.ts';
-import { digest, snapshotRevision } from './memory-store.ts';
+import { digest, snapshotRevision } from './revision.ts';
 import { WorkspaceMemory } from '../host/memory.ts';
 import type { MemoryAdapter } from './memory-dsh.ts';
 import type {

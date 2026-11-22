@@ -9,7 +9,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { composeResident, foldResident, decideResident } from '@wahhheee/stash-core';
 import type { ResidentRecord } from '@wahhheee/stash-core';
-import { FileMemoryStore, digest } from '../../plugin/src/adapters/memory-store.ts';
+import { FileMemoryStore } from '../../plugin/src/adapters/memory-store.ts';
+import { digest } from '../../plugin/src/adapters/revision.ts';
 import { eventResident, auditSchema } from '../../plugin/src/adapters/memory-records.ts';
 
 export const offlineMeter = { estimate: (text: string) => Math.ceil(text.length / 4) };

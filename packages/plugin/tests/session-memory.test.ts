@@ -23,7 +23,7 @@ import {
   foldSession,
   validateCommit,
 } from '../src/adapters/session-memory.ts';
-import { digest } from '../src/adapters/memory-store.ts';
+import { digest } from '../src/adapters/revision.ts';
 import { WorkspaceMemory } from '../src/host/memory.ts';
 import { mountHistoryHost } from './history-host.ts';
 import { DshHistory, historyProjection } from '../src/adapters/history-dsh.ts';
@@ -54,7 +54,9 @@ it('真实宿主投影分叉独立、冷读与删除缓存后重建，搜索和�
     );
     return { ctx, projection, history };
   };
-  let { ctx, projection, history } = await boot();
+  const initial = await boot();
+  const { projection } = initial;
+  let ctx = initial.ctx;
   try {
     const workspace = await ctx.workspaceRegistry.create(root);
     const source = ctx.sessions.create(SessionId('session-source'), { meta: { cwd: root } });
@@ -100,7 +102,9 @@ it('真实宿主投影分叉独立、冷读与删除缓存后重建，搜索和�
     // 仅删除隔离测试目录中明确的缓存文件，验证日志是唯一正本。
     await rm(join(root, 'storage', 'session_projcache', 'sessions', source.id + '.json'));
     await rm(join(root, 'storage', 'session_projcache', 'sessions', fork.id + '.json'));
-    ({ ctx, projection, history } = await boot());
+    const rebooted = await boot();
+    ctx = rebooted.ctx;
+    const { history } = rebooted;
     expect((await history.session(fork.id)).memory?.['/RULES.md']).toBe('- 分支规则');
     expect((await history.session(fork.id)).lineage?.source).toBe(source.id);
     const browser = new HistoryBrowser(history, workspace.id, fork.id, meter, 4000);

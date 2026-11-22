@@ -11,12 +11,13 @@
     "build": "tsx scripts/build.ts",
     "typecheck": "tsc",
     "lint": "eslint .",
-    "format": "eslint . --fix && prettier --write .",
+    "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm test:e2e",
-    "devtools": "tsx packages/devtools/src/cli.ts"
+    "devtools": "tsx packages/devtools/src/cli.ts",
+    "host:prepare": "tsx scripts/prepare-host.ts"
   },
   "devDependencies": {
     "@deepseek-ai/dsh": "0.2.2-rc.5",
@@ -24,8 +25,7 @@
     "@deepseek-ai/dsh-llm-mock-server": "0.2.2-rc.5",
     "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.5",
     "@deepseek-ai/dsh-typert-generator": "0.2.2-rc.5",
-    "@eslint/js": "^9.39.0",
-    "@stylistic/eslint-plugin": "^5.10.0",
+    "@eslint/js": "^10.0.1",
     "@testing-library/react": "^16.3.0",
     "@tsdown/css": "0.22.2",
     "@types/node": "^22.19.0",
@@ -33,14 +33,16 @@
     "@types/react-dom": "^18.3.0",
     "@types/semver": "^7.7.0",
     "clsx": "2.1.1",
-    "eslint": "^9.39.0",
-    "eslint-config-prettier": "^10.1.0",
+    "eslint": "^10.15.0",
     "jsdom": "^27.4.0",
-    "prettier": "^3.8.0",
+    "prettier": "^3.10.1",
+    "semver": "^7.8.0",
     "tsdown": "0.22.2",
     "tsx": "^4.23.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "^8.57.0",
-    "vitest": "4.1.11"
+    "typescript-eslint": "^8.73.0",
+    "vitest": "4.1.11",
+    "yaml": "2.8.2",
+    "zod": "4.4.3"
   }
 }

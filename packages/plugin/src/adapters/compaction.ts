@@ -10,7 +10,7 @@ class StockHooks extends BasicCompactionEngine {
   static readonly summarize = this.prototype.summarize;
 }
 
-/** rc.5 没有运行时摘要钩子注册表；只装饰原装实例，保留调用方的上下文和原方法。 */
+/** 只装饰原装压缩器。卸载时按方法身份检查所有权，保留其他插件安装的钩子。 */
 function attachCompactionNotes(
   ctx: Context,
   memory: MemoryAdapter,
@@ -18,6 +18,7 @@ function attachCompactionNotes(
 ): (() => void) | undefined {
   const engine = ctx.compaction;
   if (
+    typeof StockHooks.summarize !== 'function' ||
     !(engine instanceof BasicCompactionEngine) ||
     Object.getPrototypeOf(engine) !== BasicCompactionEngine.prototype
   )

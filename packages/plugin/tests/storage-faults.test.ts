@@ -2,7 +2,8 @@ import * as fs from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it, vi } from 'vitest';
-import { FileMemoryStore, memoryFile } from '../src/adapters/memory-store.ts';
+import { FileMemoryStore } from '../src/adapters/memory-store.ts';
+import { memoryFile } from '../src/adapters/revision.ts';
 
 vi.mock('node:fs/promises', async (original) => {
   const real = await original<typeof fs>();

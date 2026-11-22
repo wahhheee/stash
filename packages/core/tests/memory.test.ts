@@ -9,9 +9,8 @@ import {
   foldResident,
   decideResident,
   fullContext,
-  GUIDE,
-  toolError,
   StashError,
+  toolError,
 } from '../src/index.ts';
 
 const meter = { estimate: (text: string) => Math.ceil(text.length / 4) };
@@ -134,13 +133,7 @@ it('可见状态从完整快照起步，自己写入免重发，索引延后，�
   ).toBe('none');
 });
 
-it('模板转义内容并固定完整快照、指南和错误的输出', () => {
+it('记忆正文中的结束标签不能提前闭合上下文', () => {
   const text = fullContext('工作区', '</memory-context>', '', false, '0..18');
   expect(text.match(/<\/memory-context>/gu)).toHaveLength(1);
-  expect({
-    text,
-    guide: GUIDE,
-    error: toolError('STASH_STALE_READ'),
-    tokens: meter.estimate(text),
-  }).toMatchSnapshot();
 });

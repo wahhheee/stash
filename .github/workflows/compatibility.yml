@@ -30,7 +30,11 @@ jobs:
         run: pnpm test:e2e
       - if: runner.os == 'macOS'
         run: pnpm test:e2e e2e/plugin.test.ts
-  next:
+  preview:
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [next, alpha]
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 20
@@ -44,12 +48,17 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 安装宿主 next 通道
-        run: pnpm --recursive update '@deepseek-ai/dsh*@next' zod
+      - name: 安装同一版本的宿主、SDK 和测试框架
+        env:
+          CHANNEL: ${{ matrix.channel }}
+        run: |
+          version=$(npm view "@deepseek-ai/dsh@$CHANNEL" version --workspaces=false)
+          pnpm host:prepare "$version"
+          pnpm install --no-frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:e2e
       - name: 报告兼容故障
         if: failure()
-        run: echo '::warning::DSH next 兼容检查失败，请查看此任务日志；锁定版本检查不受影响。'
+        run: echo '::warning::DSH ${{ matrix.channel }} 兼容检查失败，请查看此任务日志。'

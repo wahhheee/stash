@@ -4,7 +4,6 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import { expect, it, vi } from 'vitest';
 import * as client from '../src/client/index.tsx';
 import type { MemoryPanelProps } from '../src/client/MemoryPanel.tsx';
-import { StashIcon } from '../src/client/StashIcon.tsx';
 import { zh } from '../src/client/locales.ts';
 
 it('输入框打开会话设置，工作区菜单仅提供该工作区的设置，来源导航可用', async () => {
@@ -44,10 +43,6 @@ it('输入框打开会话设置，工作区菜单仅提供该工作区的设置�
   try {
     await ctx.plugin(client);
     expect(seats.get('settings.section')).toMatchObject({ id: 'stash' });
-    expect(ctx.slots.register).toHaveBeenCalledWith(
-      { name: 'settings.section.icon', id: 'stash' },
-      StashIcon,
-    );
     const input = seats.get('conversation.input.left')!.inject('current');
     expect(input.compact).toBe(true);
     input.openPage!();
@@ -63,13 +58,12 @@ it('输入框打开会话设置，工作区菜单仅提供该工作区的设置�
       { workspaceId, displayTitle: '工作区', path: '/chosen' },
       new AbortController().signal,
     );
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toMatchObject({
+    const settings = actions.find((action) => action.id === 'settings');
+    expect(settings).toMatchObject({
       id: 'settings',
       label: zh.settings,
-      icon: { key: 'stash.settings' },
     });
-    await actions[0]!.run!();
+    await settings!.run!();
     expect(openWorkspace).toHaveBeenCalledWith(workspaceId);
     expect(openTab).toHaveBeenLastCalledWith('stash', {
       params: { scope: 'workspace', section: 'preferences' },

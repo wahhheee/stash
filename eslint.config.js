@@ -1,93 +1,56 @@
-import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import prettier from 'eslint-config-prettier';
-import stylistic from '@stylistic/eslint-plugin';
 import { builtinModules } from 'node:module';
+import js from '@eslint/js';
+import { defineConfig, globalIgnores } from 'eslint/config';
+import tseslint from 'typescript-eslint';
 
-// 大块定义和顶层初始化分开；短类型别名、常量和连续字段可以保持成组。
-const separatedStatements = [
-  'function',
-  'class',
-  'interface',
-  'enum',
-  'multiline-type',
-  'multiline-export',
-  { selector: 'TSModuleDeclaration' },
-  { selector: 'Program > VariableDeclaration', lineMode: 'multiline' },
-  { selector: 'Program > ExpressionStatement', lineMode: 'multiline' },
-  { selector: ':matches(TSMethodSignature)', lineMode: 'multiline' },
-];
+const nodeImports = [...builtinModules, 'node:*'];
+const restrict = (...patterns) => ['error', { patterns }];
 
-export default tseslint.config(
-  { ignores: ['.exclude/**', '**/lib/**', '**/node_modules/**', 'coverage/**'] },
+export default defineConfig([
+  globalIgnores(['.exclude/**', '**/lib/**', '**/coverage/**']),
   js.configs.recommended,
-  ...tseslint.configs.recommended,
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: ['**/*.{ts,tsx}'],
+    extends: [tseslint.configs.recommended],
     rules: { '@typescript-eslint/consistent-type-imports': 'error' },
+  },
+  {
+    files: ['packages/*/src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/await-thenable': 'error',
+    },
   },
   {
     files: ['packages/core/src/**/*.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            ...builtinModules,
-            '@deepseek-ai/*',
-            'node:*',
-            '@wahhheee/dsh-stash',
-            '@wahhheee/stash-devtools',
-            '**/plugin/**',
-            '**/devtools/**',
-          ],
-        },
-      ],
+      'no-restricted-imports': restrict(
+        ...nodeImports,
+        '@deepseek-ai/*',
+        '@wahhheee/dsh-stash',
+        '@wahhheee/stash-devtools',
+        '**/plugin/**',
+        '**/devtools/**',
+      ),
     },
   },
   {
     files: ['packages/plugin/src/client/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            ...builtinModules,
-            'node:*',
-            '**/host/**',
-            '**/adapters/config*',
-            '**/adapters/diagnostics*',
-            '**/adapters/dsh*',
-            '**/adapters/trace*',
-          ],
-        },
-      ],
+      'no-restricted-imports': restrict(
+        ...nodeImports,
+        '**/host/**',
+        '**/adapters/**',
+        '!**/adapters/remote.ts',
+        '!**/adapters/maintenance-schema.ts',
+      ),
     },
   },
   {
     files: ['packages/plugin/src/host/**/*.ts'],
-    rules: { 'no-restricted-imports': ['error', { patterns: ['@deepseek-ai/*'] }] },
+    rules: { 'no-restricted-imports': restrict('@deepseek-ai/*') },
   },
-  prettier,
-  {
-    plugins: { '@stylistic': stylistic },
-    rules: {
-      '@stylistic/padding-line-between-statements': [
-        'error',
-        { blankLine: 'always', prev: 'import', next: '*' },
-        { blankLine: 'any', prev: 'import', next: 'import' },
-        { blankLine: 'always', prev: '*', next: separatedStatements },
-        { blankLine: 'always', prev: separatedStatements, next: '*' },
-      ],
-      '@stylistic/lines-between-class-members': [
-        'error',
-        {
-          enforce: [
-            { blankLine: 'always', prev: 'method', next: '*' },
-            { blankLine: 'always', prev: '*', next: 'method' },
-          ],
-        },
-      ],
-    },
-  },
-);
+]);

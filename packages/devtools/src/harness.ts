@@ -20,7 +20,7 @@ export function testEnvironment(home: string): NodeJS.ProcessEnv {
     DSH_AGENTS_HOME: join(home, 'agents'),
     DEEPSEEK_API_KEY: 'stash-test-placeholder',
     DSH_PRIMARY_RUNTIME: '',
-    npm_config_registry: process.env.npm_config_registry ?? 'https://registry.npmmirror.com/',
+    npm_config_registry: process.env.npm_config_registry ?? 'https://registry.npmjs.org/',
   };
 }
 

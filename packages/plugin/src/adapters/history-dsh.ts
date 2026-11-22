@@ -18,7 +18,7 @@ import type {
 import { foldSession, eventCommits } from './session-memory.ts';
 import { commitFiles } from '@wahhheee/stash-core';
 import type { CommitState } from '@wahhheee/stash-core';
-import { digest } from './memory-store.ts';
+import { digest } from './revision.ts';
 import { redact } from './redaction.ts';
 
 export function historyEvent(id: string, event: SessionEvent, inherited: number): HistoryEvent {
@@ -75,6 +75,16 @@ export const historyProjection: ProjectionDefinition<'stashHistory', readonly Hi
     }),
 };
 
+type SessionCut = Pick<Session, 'header' | 'inheritedEventCount'> & {
+  events: readonly SessionEvent[];
+  turns: () => readonly HistoryTurn[];
+  memory: () => CommitState;
+};
+
+type HistoryQuery = Pick<Context['sessionQuery'], 'observeSession'> & {
+  inspectSession?<T>(id: SessionId, read: (session: Session) => T): Promise<T>;
+};
+
 /** 使用宿主只读观察租约；不恢复 agent，不修改原始日志。 */
 export class DshHistory implements HistoryPort, WorkspacePort {
   constructor(
@@ -83,12 +93,40 @@ export class DshHistory implements HistoryPort, WorkspacePort {
     private readonly memoryProjection?: ProjectionHandle<CommitState>,
   ) {}
 
-  private async inspect<T>(id: string, read: (session: Session) => T): Promise<T> {
+  private async inspect<T>(id: string, read: (cut: SessionCut) => T): Promise<T> {
     const key = SessionId(sessionId(id));
-    // all 模式从宿主持久检查点恢复投影；租约保证冷读对象存活至同步读取结束。
-    const observation = await this.ctx.sessionQuery.observeSession(key, { projectionMode: 'all' });
+    const query: HistoryQuery = this.ctx.sessionQuery;
+    const observation = await query.observeSession(key, {
+      projectionMode: query.inspectSession ? 'all' : 'none',
+    });
     try {
-      return await this.ctx.sessionQuery.inspectSession(key, read);
+      if (query.inspectSession) {
+        return await query.inspectSession(key, (session) => {
+          return read({
+            header: session.header,
+            inheritedEventCount: session.inheritedEventCount,
+            get events() {
+              return session.snapshotEvents();
+            },
+            turns: () => this.projection.stateOf(session),
+            memory: () =>
+              this.memoryProjection?.stateOf(session) ?? foldSession(session.snapshotEvents()),
+          });
+        });
+      }
+      // 观察租约提供一致的事件切点，私有投影可直接用同一组折叠函数还原。
+      const { header, inheritedEventCount, events } = observation;
+      return read({
+        header,
+        inheritedEventCount,
+        events,
+        turns: () =>
+          events.reduce(
+            historyProjection.apply,
+            historyProjection.init(header, inheritedEventCount),
+          ),
+        memory: () => foldSession(events),
+      });
     } finally {
       observation[Symbol.dispose]();
     }
@@ -99,7 +137,7 @@ export class DshHistory implements HistoryPort, WorkspacePort {
     exact = false,
   ): Promise<{ source: string | null; candidates: string[] } | undefined> {
     const prefix = await this.inspect(id, (session) =>
-      session.snapshotEvents().slice(0, session.inheritedEventCount),
+      session.events.slice(0, session.inheritedEventCount),
     );
     if (!prefix.length) return undefined;
     for (const event of exact ? [] : [...prefix].reverse()) {
@@ -114,7 +152,7 @@ export class DshHistory implements HistoryPort, WorkspacePort {
     for (const candidate of workspace?.sessionIds ?? []) {
       if (candidate === id) continue;
       const matches = await this.inspect(candidate, (session) => {
-        const event = session.eventAt(cut.seq);
+        const event = session.events[cut.seq];
         return event !== undefined && digest(JSON.stringify(event)) === digest(JSON.stringify(cut));
       });
       if (matches) candidates.push(candidate);
@@ -125,14 +163,12 @@ export class DshHistory implements HistoryPort, WorkspacePort {
   async memorySnapshot(id: string) {
     return this.inspect(id, (session) => ({
       title: (() => {
-        const event = session.snapshotEvents().findLast((event) => event.type === 'session/title');
+        const event = session.events.findLast((event) => event.type === 'session/title');
         return event?.type === 'session/title' ? redact(event.data.title) : '';
       })(),
-      started: session.snapshotEvents().some((event) => event.type === 'system/message'),
-      files: commitFiles(
-        this.memoryProjection?.stateOf(session) ?? foldSession(session.snapshotEvents()),
-      ),
-      beforeSeq: session.snapshotEvents().length,
+      started: session.events.some((event) => event.type === 'system/message'),
+      files: commitFiles(session.memory()),
+      beforeSeq: session.events.length,
     }));
   }
 
@@ -159,10 +195,10 @@ export class DshHistory implements HistoryPort, WorkspacePort {
   async session(id: string) {
     const lineage = await this.lineage(id);
     return this.inspect(id, (session) => {
-      const raw = session.snapshotEvents();
+      const raw = session.events;
       const title = raw.findLast((e) => e.type === 'session/title');
       const events = raw.map((e) => historyEvent(id, e, session.inheritedEventCount));
-      const turns = this.projection.stateOf(session).map((t) => ({ ...t }));
+      const turns = session.turns().map((t) => ({ ...t }));
       return {
         id,
         ...(lineage ? { lineage } : {}),
@@ -170,9 +206,7 @@ export class DshHistory implements HistoryPort, WorkspacePort {
         created: new Date(session.header.createdAt).toISOString(),
         events,
         turns,
-        memory: Object.fromEntries(
-          commitFiles(this.memoryProjection?.stateOf(session) ?? foldSession(raw)),
-        ),
+        memory: Object.fromEntries(commitFiles(session.memory())),
       };
     });
   }
@@ -185,16 +219,14 @@ export class DshHistory implements HistoryPort, WorkspacePort {
 
   async reference(id: string, messageId: string) {
     return this.inspect(id, (session) => {
-      const event = session
-        .snapshotEvents()
-        .find((e) => e.type === 'assistant/message' && e.data.message.id === messageId);
+      const event = session.events.find(
+        (e) => e.type === 'assistant/message' && e.data.message.id === messageId,
+      );
       const turn =
         event &&
-        this.projection
-          .stateOf(session)
-          .find((t) => t.from <= event.seq && t.to >= event.seq && t.complete);
+        session.turns().find((t) => t.from <= event.seq && t.to >= event.seq && t.complete);
       if (!turn) throw new StashError('STASH_NOT_FOUND', '未找到已完成轮次');
-      const title = session.snapshotEvents().findLast((e) => e.type === 'session/title');
+      const title = session.events.findLast((e) => e.type === 'session/title');
       return {
         id,
         title: redact(title?.type === 'session/title' ? title.data.title : id),

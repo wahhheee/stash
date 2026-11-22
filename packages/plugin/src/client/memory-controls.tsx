@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives/src/Button.tsx';
-import { Menu } from '@deepseek-ai/dsh-client-ui-primitives/src/Menu.tsx';
-import { IconChevronDownOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives/src/icons/index.tsx';
+import { Button, Menu, IconChevronDownOutlineRegular } from './dsh-ui.ts';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { LocaleKey } from './locales.ts';
@@ -10,10 +8,7 @@ import styles from './MemoryPanel.module.css';
 import { sourceSession } from './memory-state.ts';
 
 export { Button };
-export { Input } from '@deepseek-ai/dsh-client-ui-primitives/src/Input.tsx';
-export { Switch } from '@deepseek-ai/dsh-client-ui-primitives/src/Switch.tsx';
-export { Modal } from '@deepseek-ai/dsh-client-ui-primitives/src/Modal.tsx';
-export { SegmentedTabs } from '@deepseek-ai/dsh-client-ui-primitives/src/SegmentedTabs.tsx';
+export { Input, Switch, Modal, SegmentedTabs } from './dsh-ui.ts';
 export type Translate = (key: LocaleKey) => string;
 
 export function Choice({

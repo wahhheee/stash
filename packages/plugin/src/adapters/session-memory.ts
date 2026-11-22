@@ -15,7 +15,7 @@ import {
 } from '@wahhheee/stash-core';
 import type { CommitState, MemoryCommit } from '@wahhheee/stash-core';
 import type { MemoryBackend } from '../host/memory.ts';
-import { digest } from './memory-store.ts';
+import { digest } from './revision.ts';
 import { containsSecret } from './redaction.ts';
 
 const recordType = 'plugin:stash/compaction';

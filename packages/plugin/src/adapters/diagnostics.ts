@@ -17,7 +17,8 @@ import { satisfies } from 'semver';
 import { z } from 'zod';
 import { redact } from './redaction.ts';
 import type { ResolvedConfig } from './config.ts';
-import { FileMemoryStore, digest } from './memory-store.ts';
+import { FileMemoryStore } from './memory-store.ts';
+import { digest } from './revision.ts';
 import { composeResident } from '@wahhheee/stash-core';
 import manifest from '../../package.json' with { type: 'json' };
 

@@ -109,6 +109,42 @@ it('继续已有会话不触发新建，编号不是按钮，概况默认收起'
   expect(open.mock.calls[1]![0]).not.toBe(id);
 });
 
+it('展开概况后，悬停提交核实标题和指标旁的图标会显示各自的说明', async ({ onTestFinished }) => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(
+        private notify: (
+          entries: { borderBoxSize: { inlineSize: number; blockSize: number }[] }[],
+        ) => void,
+      ) {}
+      observe() {
+        this.notify([{ borderBoxSize: [{ inlineSize: 320, blockSize: 40 }] }]);
+      }
+      disconnect() {}
+    },
+  );
+  onTestFinished(() => {
+    vi.unstubAllGlobals();
+  });
+  render(<MaintenancePanel call={async () => sample()} t={(k) => zh[k]} enabled />);
+  fireEvent.click(await screen.findByText(zh.maintMetrics));
+  for (const [name, help] of [
+    [zh.maintVerification, zh.maintVerificationHelp],
+    [zh.maintDifferent, zh.maintDifferentHelp],
+    [zh.maintUnknown, zh.maintUnknownHelp],
+  ] as const) {
+    const icon = screen.getByRole('button', { name: zh.maintHelpLabel.replace('{name}', name) });
+    fireEvent.pointerOver(icon, { pointerType: 'mouse' });
+    const tip = screen.getByRole('tooltip');
+    expect(tip.textContent).toBe(help);
+    expect(icon.getAttribute('aria-describedby')).toBe(tip.id);
+    fireEvent.pointerOut(icon, { pointerType: 'mouse' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  }
+});
+
 it('读取失败不当作空列表，已读且没有记录才显示空状态', async () => {
   const call = vi
     .fn<() => Promise<MaintenanceData>>()

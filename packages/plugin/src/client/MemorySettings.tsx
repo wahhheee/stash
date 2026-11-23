@@ -48,8 +48,6 @@ export function MemorySettings({
   t: Translate;
 }) {
   const value = data[scope];
-  const effective =
-    scope === 'workspace' ? resolveSwitches(data.globalEnabled, data.workspace) : data.effective;
   return (
     <div className={styles.settings}>
       <section aria-label={t('switchSettings')} className={styles.switchGroup}>
@@ -63,9 +61,6 @@ export function MemorySettings({
             <div>
               <strong>{t(key)}</strong>
               <p className={styles.hint}>{t(key === 'enabled' ? 'enabledHelp' : 'writableHelp')}</p>
-              <span className={styles.hint}>
-                {t('effectiveState').replace('{state}', t(effective[key] ? 'on' : 'off'))}
-              </span>
             </div>
             <Choice
               label={t(key)}

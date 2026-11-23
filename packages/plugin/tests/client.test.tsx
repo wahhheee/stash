@@ -33,7 +33,7 @@ it('全局补记开关显示补记用途，保存被拒绝时不伪装成已开�
     );
   });
   expect(
-    screen.getByText('开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash，无需你审核。'),
+    screen.getByText('开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash。'),
   ).toBeTruthy();
   const toggle = screen.getByRole('switch', { name: zh.compactTitle });
   await act(async () => {

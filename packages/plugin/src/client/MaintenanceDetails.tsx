@@ -1,5 +1,6 @@
 import type { MaintenanceData } from '../adapters/maintenance-schema.ts';
 import { DiffBlock } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconInfoOutlineRegular, Tooltip } from './dsh-ui.ts';
 import { Button } from './memory-controls.tsx';
 import type { Translate } from './memory-controls.tsx';
 import styles from './MaintenancePanel.module.css';
@@ -11,7 +12,11 @@ export function MaintenanceOverview({
   health: MaintenanceData['health'];
   t: Translate;
 }) {
-  const groups = [
+  const groups: {
+    name: string;
+    help?: string;
+    rows: [name: string, value: string | number, help?: string][];
+  }[] = [
     {
       name: t('maintActivity'),
       rows: [
@@ -25,12 +30,30 @@ export function MaintenanceOverview({
     },
     {
       name: t('maintVerification'),
+      help: t('maintVerificationHelp'),
       rows: [
-        [t('maintDifferent'), h.verifiedDifferent],
-        [t('maintUnknown'), h.verifiedUnknown],
+        [t('maintDifferent'), h.verifiedDifferent, t('maintDifferentHelp')],
+        [t('maintUnknown'), h.verifiedUnknown, t('maintUnknownHelp')],
       ],
     },
   ];
+  function metricLabel(name: string, help?: string) {
+    if (!help) return name;
+    return (
+      <>
+        {name}{' '}
+        <Tooltip label={help} side="top" portal maxWidth={320} openOnClick>
+          <button
+            type="button"
+            className={styles.helpButton}
+            aria-label={t('maintHelpLabel').replace('{name}', name)}
+          >
+            <IconInfoOutlineRegular size={14} />
+          </button>
+        </Tooltip>
+      </>
+    );
+  }
   return (
     <section className={styles.overview} aria-label={t('maintOverview')}>
       <h3>{t('maintOverview')}</h3>
@@ -51,11 +74,11 @@ export function MaintenanceOverview({
         <div className={styles.metricGroups}>
           {groups.map((g) => (
             <div key={g.name}>
-              <h4>{g.name}</h4>
+              <h4>{metricLabel(g.name, g.help)}</h4>
               <dl>
-                {g.rows.map(([name, value]) => (
+                {g.rows.map(([name, value, help]) => (
                   <div key={name}>
-                    <dt>{name}</dt>
+                    <dt>{metricLabel(name, help)}</dt>
                     <dd>{value}</dd>
                   </div>
                 ))}

@@ -17,6 +17,7 @@ export {
   IconClockOutlineRegular,
   IconCloseOutlineRegular,
   IconEllipsisOutlineRegular,
+  IconInfoOutlineRegular,
   IconLayersOutlineRegular,
   IconPlusOutlineRegular,
   IconWarningTriangleOutlineRegular,

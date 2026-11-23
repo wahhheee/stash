@@ -8,7 +8,8 @@ export const memoryEn = {
   unnamedSession: 'New conversation',
   noteCount: '{count} notes',
   emptyNotes: 'No notes yet',
-  emptyNotesHint: 'Keep useful facts, decisions and lessons here.',
+  emptyNotesHint:
+    'Keep useful facts, decisions and lessons here. The model usually creates and updates notes on its own, so you rarely need to maintain them manually.',
   newNote: 'New note',
   createNote: 'Create note',
   editNote: 'Edit note',
@@ -90,9 +91,8 @@ export const memoryEn = {
   inheritWorkspaceHelp: 'Include workspace rules and note descriptions in this session’s context.',
   followWorkspace: 'Follow workspace',
   followGlobal: 'Follow global',
-  effectiveState: 'Currently {state}',
   rulesHelp:
-    'Instructions the model should follow in this scope. Preserve their conditions and exceptions.',
+    'Instructions the model should follow in this scope. Preserve their conditions and exceptions. The model usually creates and updates rules on its own, so you rarely need to maintain them manually.',
   emptyRules: 'No rules yet.',
   editRules: 'Edit rules',
   keepEditing: 'Keep editing',
@@ -148,7 +148,8 @@ export const memoryZh: typeof memoryEn = {
   unnamedSession: '新会话',
   noteCount: '{count} 篇笔记',
   emptyNotes: '还没有笔记',
-  emptyNotesHint: '在这里记录值得保留的事实、决策和经验。',
+  emptyNotesHint:
+    '在这里记录值得保留的事实、决策和经验。大多数情况下，模型会自行创建和更新笔记，无需手动维护。',
   newNote: '新建笔记',
   createNote: '创建笔记',
   editNote: '编辑笔记',
@@ -222,8 +223,8 @@ export const memoryZh: typeof memoryEn = {
   inheritWorkspaceHelp: '在本会话上下文中加载工作区规则和笔记描述。',
   followWorkspace: '跟随工作区',
   followGlobal: '跟随全局',
-  effectiveState: '当前{state}',
-  rulesHelp: '希望模型在这个范围内持续遵守的要求。请保留适用条件和例外。',
+  rulesHelp:
+    '希望模型在这个范围内持续遵守的要求。请保留适用条件和例外。大多数情况下，模型会自行创建和更新规则，无需手动维护。',
   emptyRules: '还没有规则。',
   editRules: '编辑规则',
   keepEditing: '继续编辑',

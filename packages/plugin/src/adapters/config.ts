@@ -22,7 +22,7 @@ export const Config = Schema.object({
   enabled: Schema.boolean().default(true).description('记忆总开关。'),
   compactionNotes: Schema.boolean()
     .default(true)
-    .description('开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash，无需你审核。')
+    .description('开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash。')
     .volatile(),
   subagentWrite: Schema.boolean().default(false).description('允许子代理写入记忆。'),
   trace: Schema.union(['off', 'metadata', 'content'])

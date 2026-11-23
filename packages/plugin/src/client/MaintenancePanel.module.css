@@ -384,6 +384,27 @@
   margin: 0 0 4px;
   font-size: 13px;
 }
+.helpButton {
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  color: var(--muted);
+  background: transparent;
+  cursor: help;
+}
+.helpButton:hover,
+.helpButton:focus-visible {
+  color: var(--ink);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.helpButton:focus-visible {
+  outline: 1px solid currentColor;
+}
 .metricGroups dl > div {
   display: flex;
   align-items: baseline;

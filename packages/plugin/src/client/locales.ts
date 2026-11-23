@@ -3,7 +3,7 @@ import { memoryEn, memoryZh } from './memory-locales.ts';
 export const en = {
   compactTitle: 'Save notes when summarizing a conversation',
   compactHelp:
-    'Before DSH summarizes the conversation, the model can save useful findings as stash notes without asking for approval.',
+    'Before DSH summarizes the conversation, the model can save useful findings as stash notes.',
   compactUnsupported: 'This host is not using a supported compaction engine.',
   compactFailed: 'Could not save the setting. Check the connection and try again.',
   ...memoryEn,
@@ -21,6 +21,9 @@ export const en = {
   maintActivity: 'Note activity',
   maintCapacity: 'Index capacity',
   maintVerification: 'Commit verification',
+  maintHelpLabel: 'About {name}',
+  maintVerificationHelp:
+    'Compares the Git commit recorded when each note was verified with the current project commit (HEAD). Counts notes with a different commit and notes whose commits cannot be compared. Only notes with a verification record are included.',
   maintIndexFull: 'Expanded',
   maintIndexFolded: 'Folded',
   maintDisabled:
@@ -60,7 +63,11 @@ export const en = {
   maintUnread: 'Unread for {days} days',
   maintAdded: 'Added since last maintenance',
   maintDifferent: 'Verified at a different commit',
+  maintDifferentHelp:
+    'The Git commit recorded when these notes were verified differs from the current project commit.',
   maintUnknown: 'Verification unavailable',
+  maintUnknownHelp:
+    'These notes have a verification record, but the commit ID could not be read from it or the current project commit could not be retrieved.',
   maintSavedRefresh:
     'Change saved, but the latest health indicators could not be loaded. Refresh to retry.',
   maintError:
@@ -148,7 +155,7 @@ export const en = {
 
 export const zh: typeof en = {
   compactTitle: '压缩对话时补记笔记',
-  compactHelp: '开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash，无需你审核。',
+  compactHelp: '开启后，模型可以在 DSH 生成摘要前把有用的结论补记到 stash。',
   compactUnsupported: '当前 DSH 没有使用支持补记的压缩器。',
   compactFailed: '设置未保存，请检查连接后重试。',
   ...memoryZh,
@@ -166,6 +173,9 @@ export const zh: typeof en = {
   maintActivity: '笔记活跃度',
   maintCapacity: '索引容量',
   maintVerification: '提交核实',
+  maintHelpLabel: '{name}说明',
+  maintVerificationHelp:
+    '将笔记核实时记录的 Git 提交与项目当前提交（HEAD）进行比较，统计提交不同或无法比较的笔记数。只统计有核实记录的笔记。',
   maintIndexFull: '完整显示',
   maintIndexFolded: '已折叠',
   maintDisabled: '如需新建，请启用记忆，并允许当前会话继承工作区记忆。',
@@ -201,7 +211,9 @@ export const zh: typeof en = {
   maintUnread: '已 {days} 天未读',
   maintAdded: '上次整理后新增',
   maintDifferent: '核实提交与 HEAD 不同',
+  maintDifferentHelp: '这些笔记核实时记录的 Git 提交与项目当前提交不同。',
   maintUnknown: '无法比较核实提交',
+  maintUnknownHelp: '这些笔记有核实记录，但无法从记录中读出提交号，或无法获取项目当前的 Git 提交。',
   maintSavedRefresh: '操作已保存，但最新指标未能加载。请刷新重试。',
   maintError: '操作未完成。请刷新工作区；已变化的计划或后续编辑不能被覆盖。',
   maintApplied: '已应用',

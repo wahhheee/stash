@@ -2,13 +2,12 @@ import { createServer, request } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { join, resolve } from 'node:path';
-import { writeFile, readdir } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { expect, it } from 'vitest';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import { createHarnessFixture } from '../packages/devtools/src/harness.ts';
 import { foldLog } from '../packages/devtools/src/fold.ts';
 import { forkFixture } from '../packages/devtools/src/fork-fixture.ts';
-import { reconcile } from '../packages/devtools/src/reconcile.ts';
 
 for (const mode of ['standard', 'ptc'])
   it(mode + ' 会话写入、分叉前缀、重启压缩和离线重放', async () => {
@@ -218,18 +217,6 @@ for (const mode of ['standard', 'ptc'])
           (await foldLog(join(fixture.home, 'sessions'), childId)).at(-1)?.files['/notes/nested.md']
             ?.content,
         ).toContain('同一根调用的追加');
-      const workspace = (await readdir(join(fixture.home, 'memory'))).find(
-        (p) => !p.startsWith('.'),
-      )!;
-      for (const id of [sourceId, childId])
-        expect(
-          await reconcile(
-            join(fixture.home, 'memory'),
-            workspace,
-            join(fixture.home, 'sessions'),
-            id,
-          ),
-        ).toEqual(expect.arrayContaining([expect.stringContaining('OK ')]));
     } finally {
       await host.close();
       await new Promise<void>((done, reject) =>

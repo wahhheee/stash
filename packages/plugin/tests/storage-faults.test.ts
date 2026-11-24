@@ -79,9 +79,7 @@ it.each(['只读目录', '暂存刷盘', '登记意图', '替换正文', '追加
     const committed = ['替换正文', '追加日志', '清除意图'].includes(point);
     for (let i = 0; i < 2; i++) {
       const store = f.cold();
-      expect((await store.observe('w')).files.get('/RULES.md')).toBe(
-        committed ? '新规则' : '旧规则',
-      );
+      expect((await store.snapshot('w')).get('/RULES.md')).toBe(committed ? '新规则' : '旧规则');
       expect((await store.journal('w')).map((c) => c.after?.content)).toEqual(
         committed ? ['旧规则', '新规则'] : ['旧规则'],
       );
@@ -118,7 +116,7 @@ it('已入日志的意图遇到外部回退，保留文件与恢复证据；无�
   ] as const) {
     const text = JSON.stringify(intent);
     await fs.writeFile(pending, text);
-    await expect(f.cold().observe('w')).rejects.toMatchObject({ code });
+    await expect(f.cold().snapshot('w')).rejects.toMatchObject({ code });
     expect(await fs.readFile(file, 'utf8')).toBe('旧规则');
     expect(await fs.readFile(pending, 'utf8')).toBe(text);
     expect(await fs.readFile(log)).toEqual(before);

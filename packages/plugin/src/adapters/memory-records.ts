@@ -33,36 +33,6 @@ export const residentSchema = z
   })
   .strict();
 
-export const auditSchema = z
-  .object({
-    v: z.literal(1),
-    sessionId: z.string(),
-    beforeSeq: z.number().int().nonnegative(),
-    journalId: z.string().nullable(),
-    config: z
-      .object({
-        rulesBudgetTokens: z.number().int().positive(),
-        indexBudgetTokens: z.number().int().positive(),
-        viewBudgetTokens: z.number().int().positive(),
-        externalRuleUpdates: z.enum(['next-request', 'next-compaction']),
-      })
-      .strict(),
-    kind: z.enum(['full', 'rules', 'none', 'position']),
-    reason: z.string(),
-    textHash: z.string(),
-    compacted: z.string().nullable(),
-    sessionMemory: z.boolean().optional(),
-    parent: z
-      .object({ id: z.string(), beforeSeq: z.number().int().nonnegative() })
-      .strict()
-      .optional(),
-    readOnly: z.boolean().optional(),
-    disabled: z.boolean().optional(),
-    clean: z.boolean().optional(),
-    policyReadOnly: z.boolean().optional(),
-  })
-  .strict();
-
 /** 可见状态与谱系识别共用载体解码，失败结果不确认状态。 */
 export function eventResident(event: SessionEvent | undefined): ResidentRecord | null {
   if (event?.type === 'user/message' && event.data.source.kind === 'stash-memory')

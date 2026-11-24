@@ -11,7 +11,38 @@ import { composeResident, foldResident, decideResident } from '@wahhheee/stash-c
 import type { ResidentRecord } from '@wahhheee/stash-core';
 import { FileMemoryStore } from '../../plugin/src/adapters/memory-store.ts';
 import { digest } from '../../plugin/src/adapters/revision.ts';
-import { eventResident, auditSchema } from '../../plugin/src/adapters/memory-records.ts';
+import { z } from 'zod';
+import { eventResident } from '../../plugin/src/adapters/memory-records.ts';
+
+const auditSchema = z
+  .object({
+    v: z.literal(1),
+    sessionId: z.string(),
+    beforeSeq: z.number().int().nonnegative(),
+    journalId: z.string().nullable(),
+    config: z
+      .object({
+        rulesBudgetTokens: z.number().int().positive(),
+        indexBudgetTokens: z.number().int().positive(),
+        viewBudgetTokens: z.number().int().positive(),
+        externalRuleUpdates: z.enum(['next-request', 'next-compaction']),
+      })
+      .strict(),
+    kind: z.enum(['full', 'rules', 'none', 'position']),
+    reason: z.string(),
+    textHash: z.string(),
+    compacted: z.string().nullable(),
+    sessionMemory: z.boolean().optional(),
+    parent: z
+      .object({ id: z.string(), beforeSeq: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
+    readOnly: z.boolean().optional(),
+    disabled: z.boolean().optional(),
+    clean: z.boolean().optional(),
+    policyReadOnly: z.boolean().optional(),
+  })
+  .strict();
 
 export const offlineMeter = { estimate: (text: string) => Math.ceil(text.length / 4) };
 
@@ -108,7 +139,15 @@ export async function reconcile(
           digest(expected.text) !== audit.textHash
         )
           throw new Error('决策重放不一致：seq ' + audit.beforeSeq);
-        const entered = events.slice(audit.beforeSeq, audits[i + 1]?.beforeSeq ?? events.length);
+        // 旧记录之后的会话仍可继续，实际注入只核对本次 pre-step 对应的步骤。
+        const limit = audits[i + 1]?.beforeSeq ?? events.length;
+        let endSeq = audit.beforeSeq;
+        while (endSeq < limit) {
+          const { type } = events[endSeq]!;
+          if (type === 'step/end' || type === 'turn/end' || type === 'turn/start') break;
+          endSeq++;
+        }
+        const entered = events.slice(audit.beforeSeq, endSeq);
         const emitted = entered.filter(
           (e) =>
             e.type === 'user/message' &&

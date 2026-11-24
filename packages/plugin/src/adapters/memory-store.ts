@@ -24,7 +24,6 @@ import { z } from 'zod';
 import { switchSchema } from './page-schema.ts';
 import type { SwitchRecord } from '@wahhheee/stash-core';
 import { containsSecret } from './redaction.ts';
-import { auditSchema } from './memory-records.ts';
 import { memoryPath, StashError } from '@wahhheee/stash-core';
 import type { MemoryChange, MemoryFile, MemoryStore } from '@wahhheee/stash-core';
 
@@ -479,29 +478,9 @@ export class FileMemoryStore implements MemoryStore {
       throw new StashError('STASH_INVALID_DATA', '工作区标识不符');
   }
 
-  async observe(id: string): Promise<{ files: Map<string, string>; journalId: string | null }> {
-    return this.locked(id, async () => {
-      await this.validateWorkspace(id);
-      await this.recover(id);
-      const files = await this.scan(id, true);
-      return { files, journalId: (await this.loadJournal(id)).changes.at(-1)?.id ?? null };
-    });
-  }
-
-  async audit(id: string, sessionId: string, record: unknown): Promise<void> {
-    if (!/^[a-zA-Z0-9_-]+$/u.test(sessionId))
-      throw new StashError('STASH_INVALID_DATA', '会话 ID 无效');
-    await this.locked(id, async () => {
-      const path = join(this.directory(id), '.decisions-' + sessionId + '.jsonl');
-      const previous = (await readOptional(path)) ?? '';
-      for (const line of previous.split('\n').filter(Boolean)) auditSchema.parse(JSON.parse(line));
-      await atomic(path, previous + JSON.stringify(auditSchema.parse(record)) + '\n');
-    });
-  }
-
   async snapshot(id: string, readOnly = false): Promise<Map<string, string>> {
-    await this.validateWorkspace(id);
     if (readOnly) {
+      await this.validateWorkspace(id);
       await this.checkBatch(id);
       const head = (await this.loadJournal(id)).changes.at(-1)?.id;
       const files = await this.scan(id, false);
@@ -511,6 +490,7 @@ export class FileMemoryStore implements MemoryStore {
       return files;
     }
     return this.locked(id, async () => {
+      await this.validateWorkspace(id);
       await this.recover(id);
       return this.scan(id, true);
     });

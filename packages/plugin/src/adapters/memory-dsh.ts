@@ -41,7 +41,6 @@ export class MemoryAdapter {
     { store: SessionMemoryStore; memory: WorkspaceMemory }
   >();
   private readonly memories = new WeakMap<Agent, Promise<WorkspaceMemory>>();
-  private readonly parents = new WeakMap<Agent, { id: string; beforeSeq: number }>();
   private readonly decisions: ReturnType<typeof watchResident>;
   readonly meter: TokenEstimator;
 
@@ -86,7 +85,7 @@ export class MemoryAdapter {
       for (const agent of ctx.agents.list()) await this.attach(agent);
       return () => undefined;
     }, 'stash: existing agents');
-    this.decisions = watchResident(this, (agent) => this.parents.get(agent));
+    this.decisions = watchResident(this);
   }
 
   async workspace(agent: Agent) {
@@ -251,7 +250,6 @@ export class MemoryAdapter {
       const id = agent.session.header.parentSession;
       const parent = await (await this.history).memorySnapshot(id);
       parentRules = expandRules(parent.files);
-      this.parents.set(agent, { id, beforeSeq: parent.beforeSeq });
     }
     return {
       ...(policy.inheritWorkspace ? workspace : { rules: '', index: '', folded: false }),

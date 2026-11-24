@@ -241,24 +241,24 @@ it('重复观察复用正文和日志缓存，mtime、大小及删除分别失�
   const journalPath = join(root, 'w', '.journal.jsonl');
   await writeFile(path, '- 甲');
   await utimes(path, 1700000000, 1700000000);
-  await store.observe('w');
+  await store.snapshot('w');
   const reads = (target: string) =>
     vi.mocked(readFile).mock.calls.filter(([p]) => p === target).length;
   const initialReads = [reads(path), reads(journalPath)];
-  await store.observe('w');
-  await store.observe('w');
+  await store.snapshot('w');
+  await store.snapshot('w');
   expect([reads(path), reads(journalPath)]).toEqual(initialReads);
   expect(await store.journal('w')).toHaveLength(1);
 
   await writeFile(path, '- 乙');
   await utimes(path, 1700000001, 1700000001);
-  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 乙');
+  expect((await store.snapshot('w')).get('/RULES.md')).toBe('- 乙');
   const stamp = await stat(path);
   await writeFile(path, '- 新增长规则');
   await utimes(path, stamp.atime, stamp.mtime);
-  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 新增长规则');
+  expect((await store.snapshot('w')).get('/RULES.md')).toBe('- 新增长规则');
   await rm(path);
-  await store.observe('w');
+  await store.snapshot('w');
   expect((await store.journal('w')).map((c) => c.after?.content ?? null)).toEqual([
     '- 甲',
     '- 乙',
@@ -273,10 +273,10 @@ it('同时间同大小外部修改允许扫描缓存命中，但写前版本校�
   const path = join(root, 'w', 'RULES.md');
   await utimes(path, 1700000000, 1700000000);
   await a.view('/RULES.md');
-  await store.observe('w');
+  await store.snapshot('w');
   await writeFile(path, '- 乙');
   await utimes(path, 1700000000, 1700000000);
-  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 甲');
+  expect((await store.snapshot('w')).get('/RULES.md')).toBe('- 甲');
   await expect(
     a.write({ path: '/RULES.md', op: 'replace', content: '- 丙' }, '2'),
   ).rejects.toMatchObject({ code: 'STASH_STALE_READ' });
@@ -305,12 +305,12 @@ it('修改日志直接追加，损坏尾部只在存在匹配 pending 时恢复'
   // 截断在 UTF-8 汉字内部也必须能按原始字节识别。
   const cut = record.indexOf(Buffer.from('中文恢复')) + 1;
   await appendFile(journalPath, record.subarray(0, cut));
-  await expect(store.observe('w')).rejects.toThrow();
+  await expect(store.snapshot('w')).rejects.toThrow();
   await writeFile(pendingPath, JSON.stringify(change));
-  expect((await store.observe('w')).files.get('/RULES.md')).toBe('- 中文恢复');
+  expect((await store.snapshot('w')).get('/RULES.md')).toBe('- 中文恢复');
   expect(await readFile(journalPath)).toEqual(Buffer.concat([original, record]));
   await writeFile(pendingPath, JSON.stringify(change));
-  await store.observe('w');
+  await store.snapshot('w');
   expect(await store.journal('w')).toHaveLength(2);
   expect(await readFile(journalPath)).toEqual(Buffer.concat([original, record]));
 });
@@ -336,15 +336,15 @@ it('恢复拒绝无关尾部、日志链损坏和外部覆盖，不截断已有�
   await writeFile(pendingPath, JSON.stringify(change));
   const unrelated = original + '{"v":99';
   await writeFile(journalPath, unrelated);
-  await expect(store.observe('w')).rejects.toThrow();
+  await expect(store.snapshot('w')).rejects.toThrow();
   expect(await readFile(journalPath, 'utf8')).toBe(unrelated);
   const broken = original.replace('"v":1', '"v":99') + JSON.stringify(change).slice(0, 20);
   await writeFile(journalPath, broken);
-  await expect(store.observe('w')).rejects.toThrow();
+  await expect(store.snapshot('w')).rejects.toThrow();
   expect(await readFile(journalPath, 'utf8')).toBe(broken);
   await writeFile(journalPath, original);
   await writeFile(join(root, 'w', 'RULES.md'), '- 用户改写');
-  await expect(store.observe('w')).rejects.toMatchObject({ code: 'STASH_STALE_READ' });
+  await expect(store.snapshot('w')).rejects.toMatchObject({ code: 'STASH_STALE_READ' });
   expect(await readFile(journalPath, 'utf8')).toBe(original);
 });
 
@@ -365,7 +365,7 @@ it('写入只返回简短结果，外部交错和新并入正文不被顺带确�
   expect(ordinary.text).not.toContain(original);
   await writeFile(join(root, 'w', 'RULES.md'), original + '\n- 用户手改');
   // 其他读操作已经记录了外部编辑，写入仍须依据会话的可见版本判定。
-  await b.observe();
+  await b.actual();
   const interleaved = await a.write(
     { path: '/RULES.md', op: 'append', content: '\n- 本次新增' },
     '3',
@@ -378,7 +378,7 @@ it('写入只返回简短结果，外部交错和新并入正文不被顺带确�
     original,
   );
   expect(repeated.trusted).toBe(false);
-  const latest = (await a.observe()).state.rules;
+  const latest = (await a.actual()).rules;
   await b.write({ path: '/RULES.md', op: 'append', content: '\n- 其他会话' }, '5', latest);
   expect(
     (await a.write({ path: '/RULES.md', op: 'append', content: '\n- 继续' }, '6', latest)).trusted,
@@ -386,7 +386,7 @@ it('写入只返回简短结果，外部交错和新并入正文不被顺带确�
   const imported = await a.write(
     { path: '/RULES.md', op: 'append', content: '\n@notes/a.md' },
     '7',
-    (await a.observe()).state.rules,
+    (await a.actual()).rules,
   );
   expect(imported.trusted).toBe(false);
   expect(imported.text).not.toContain('规则引用正文');

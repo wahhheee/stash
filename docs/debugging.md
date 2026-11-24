@@ -17,7 +17,7 @@ Web/Desktop 输入框支持：
 /stash trace off
 ```
 
-status 展示版本、工作区、记忆目录与预算；context 比较可见状态和当前状态；render 输出现在完整注入的文本；explain 给出当前实例最近的决策、位置、原因及哈希。命令不产生模型消息。
+status 展示版本、工作区、记忆目录与预算；context 比较可见状态和当前状态；render 输出现在完整注入的文本；`/stash explain` 从内存读取当前会话最近的注入决策、位置、原因及哈希。命令不产生模型消息。
 
 锁定 SDK 只识别内置命令，/stash 会进入模型对话，不应传入 SDK run。自动化的人类命令使用 Web Gateway commands/execute；SDK 验收通过捕获本地 mock 请求验证工具与记忆。SDK 的 /compact 是宿主内置命令，可用于压缩恢复验收。
 
@@ -33,7 +33,7 @@ status 展示版本、工作区、记忆目录与预算；context 比较可见�
 
 ## 磁盘与故障
 
-memoryRoot/<WorkspaceId>/ 包含 workspace.json、RULES.md、notes/、.journal.jsonl 和 .decisions-<SessionId>.jsonl。先通过 status 确定目标工作区。不要手工改日志或版本字段。
+memoryRoot/<WorkspaceId>/ 包含 workspace.json、RULES.md、notes/ 和 .journal.jsonl。先通过 status 确定目标工作区。不要手工改日志或版本字段。
 
 普通文件与目录链接、损坏 YAML、未知版本、损坏日志链、规则超预算或常见凭据会明确失败。请求前按文件清单、mtime 与大小发现外部编辑；有变化才读取正文和计算哈希。保持相同时间与大小的手改可能暂时漏检，可用显式 memory_view 读取目标或重启专用实例重新建缓存。写前目标文件版本校验、doctor 与离线检查不依赖这个缓存。只保留实际观察到的版本，无法重建扫描之间的编辑器中间版本。
 
@@ -43,7 +43,7 @@ memoryRoot/<WorkspaceId>/ 包含 workspace.json、RULES.md、notes/、.journal.j
 
 如果操作已记入日志，但正文被改回旧版，stash 会保留 `.pending.json` 并报告冲突。先备份工作区记忆目录，再对照正文、日志和 `.pending.json` 核实修改。
 
-单文件上限 32 MiB；修改日志和决策记录当前不自动清理，接近上限时应备份并安排后续维护。追加容量在替换记忆文件前检查。文件系统故障不报告写入成功。该事务处理进程中断，不承诺网络文件系统与突然断电的完整一致性。
+单文件上限 32 MiB。追加容量在替换记忆文件前检查。文件系统故障不报告写入成功。该事务处理进程中断，不承诺网络文件系统与突然断电的完整一致性。
 
 ## 离线工具
 
@@ -64,7 +64,7 @@ pnpm devtools view /path/to/memory/WORKSPACE_ID ./RULES.md /path/to/DSH_HOME/ses
 
 历史 view 使用同一渲染器，自动续读所有页面。离线会话清单仅按工作区最后已知路径与 cwd 精确匹配，工作区改名后用完整引用读取。STASH_SCOPE_REQUIRED 表示应指定会话或时间窗；STASH_AMBIGUOUS_REF 要求更长 ID；STASH_HISTORY_UNREADABLE 和 STASH_SEARCH_FAILED 表示读取失败，与 no-match 不同。续读 STASH_STALE_READ 时从第一页重新开始。
 
-reconcile 使用宿主 persistence 的 read 句柄和 Session surface 投影，按决策记录引用的修改日志 ID 重建当时的实际记忆，再核对决策与实际消息。需要同时保留会话日志、工作区修改日志和决策记录；不靠当前文件或时间戳猜测历史。输出区分 OK 和没有发出模型请求的尝试，缺失材料明确失败。
+`reconcile` 用于核对旧版 `.decisions-<SessionId>.jsonl` 中已有的决策。它读取对应的会话日志及工作区修改日志，按记录中的版本 ID 重建当时的记忆，再核对决策与实际消息。输出区分 OK 和没有发出模型请求的尝试，缺失材料明确失败。
 
 verify 检查版本、哈希链、文件与日志的一致性、锁、pending 和 trace。尚未观察到的外部编辑会暂时报不一致，宿主发现并记录后可消除；同时间同大小修改须先显式读取或重建缓存。成功退出 0，检查失败 1，参数错误 2。未知 workspace 格式不覆盖。
 
@@ -83,8 +83,6 @@ STASH_READ_ONLY 的文字区分子代理策略、其他会话目标和历史记�
 ## trace 与报告
 
 trace 默认 off；metadata 只记录白名单元数据，content 允许正文。/stash trace 只改变当前实例，持久配置由插件设置管理。文件按 UTC 日写入 .trace/，按 traceRetentionDays 清理，常见 sk- 和 Bearer 凭据脱敏。
-
-决策记录独立于 trace，始终只包含位置、版本 ID、配置、原因和哈希，没有正文。它用于重放，当前没有自动保留期限。该文件仍完整校验并整体原子替换；追加与 pending 恢复只用于修改日志。长会话的决策记录仍有随历史增长的读写成本。
 
 报告在 .reports/stash-UUID.json.gz，format: 1，包含版本、生效配置、doctor 结果与至多 200 条 trace 元数据。始终剥离正文，不自动附记忆、决策记录或会话日志；文件读取和解压上限各 8 MiB。不要直接对外发送含全文的 journal。
 

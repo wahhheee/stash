@@ -24,7 +24,7 @@ import type { FileMemoryStore } from '../adapters/memory-store.ts';
 import { digest } from '../adapters/revision.ts';
 import { containsSecret } from '../adapters/redaction.ts';
 
-export type MemoryBackend = Pick<FileMemoryStore, 'observe' | 'snapshot' | 'read' | 'transact'> &
+export type MemoryBackend = Pick<FileMemoryStore, 'snapshot' | 'read' | 'transact'> &
   Partial<Pick<FileMemoryStore, 'readNote' | 'recordRead'>>;
 
 /** 读取凭据只存在于当前 agent；完整连续读完才允许覆盖。 */
@@ -41,10 +41,10 @@ export class WorkspaceMemory {
     readonly indexPrefix = '',
   ) {}
 
-  async observe(): Promise<{ state: ResidentState; journalId: string | null }> {
-    const observed = await this.store.observe(this.workspaceId);
+  async actual(): Promise<ResidentState> {
+    const files = await this.store.snapshot(this.workspaceId);
     const state = composeResident(
-      observed.files,
+      files,
       this.meter,
       this.config.indexBudgetTokens,
       this.indexPrefix,
@@ -56,11 +56,7 @@ export class WorkspaceMemory {
         budgetDetail(used, this.config.rulesBudgetTokens),
         { kind: 'rules-budget', used, limit: this.config.rulesBudgetTokens },
       );
-    return { state, journalId: observed.journalId };
-  }
-
-  async actual(): Promise<ResidentState> {
-    return (await this.observe()).state;
+    return state;
   }
 
   async view(path: string, cursor?: string, displayPath = path): Promise<string> {

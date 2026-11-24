@@ -266,7 +266,7 @@ it('陈旧快照、超预算、凭据和无法创建的目录冲突在批次写�
 
 it('从部分落盘的批次续写，重复打开不重复记账；未知版本不覆盖', async () => {
   const { store, dir, root } = await fixture();
-  await store.observe('w');
+  await store.snapshot('w');
   const id = group();
   const changes = [a, b].map((path) => ({
     v: 1,
@@ -286,13 +286,13 @@ it('从部分落盘的批次续写，重复打开不重复记账；未知版本�
   await writeFile(join(dir, a), note('新'));
   await expect(store.snapshot('w', true)).rejects.toMatchObject({ code: 'STASH_LOCKED' });
   const reopened = new FileMemoryStore(root);
-  await reopened.observe('w');
-  await reopened.observe('w');
+  await reopened.snapshot('w');
+  await reopened.snapshot('w');
   expect((await reopened.journal('w')).filter((row) => row.group === id)).toHaveLength(2);
   await reopened.rollback('w', id, validate);
   expect(await readFile(join(dir, b), 'utf8')).toBe(note(b));
   await writeFile(join(dir, '.batch.json'), '{"v":2}');
-  await expect(reopened.observe('w')).rejects.toThrow();
+  await expect(reopened.snapshot('w')).rejects.toThrow();
   expect(await readFile(join(dir, '.batch.json'), 'utf8')).toBe('{"v":2}');
 });
 

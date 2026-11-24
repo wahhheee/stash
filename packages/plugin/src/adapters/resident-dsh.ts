@@ -43,10 +43,7 @@ export function compactionRange(agent: Agent): string | undefined {
   return first <= last ? `${first}..${last}` : undefined;
 }
 
-export function watchResident(
-  adapter: MemoryAdapter,
-  parentOf: (agent: Agent) => { id: string; beforeSeq: number } | undefined,
-) {
+export function watchResident(adapter: MemoryAdapter) {
   const { ctx, config, trace } = adapter;
   const decisions = new WeakMap<Agent, string[]>();
   ctx.on('agent/pre-step', async ({ agent, step, signal }, next) => {
@@ -65,12 +62,9 @@ export function watchResident(
     const session = await adapter.sessionMemory(agent);
     session.store.reset();
     const empty = { rules: '', index: '', folded: false };
-    const observed =
-      policy.enabled && policy.inheritWorkspace
-        ? await memory.observe()
-        : { state: empty, journalId: null };
+    const workspace = policy.enabled && policy.inheritWorkspace ? await memory.actual() : empty;
     const actual = policy.enabled
-      ? await adapter.actual(agent, observed.state)
+      ? await adapter.actual(agent, workspace)
       : { ...empty, disabled: true };
     const believed = foldResident(records, memory.workspaceId);
     const compacted = compactionRange(agent);
@@ -104,29 +98,6 @@ export function watchResident(
       tokens: adapter.meter.estimate(result.text),
     });
     signal.throwIfAborted();
-    const parent = parentOf(agent);
-    await adapter.store.audit(memory.workspaceId, agent.id, {
-      v: 1,
-      sessionId: agent.id,
-      beforeSeq: agent.session.snapshotEvents().length,
-      journalId: observed.journalId,
-      config: {
-        rulesBudgetTokens: config.rulesBudgetTokens,
-        indexBudgetTokens: config.indexBudgetTokens,
-        viewBudgetTokens: config.viewBudgetTokens,
-        externalRuleUpdates: config.externalRuleUpdates,
-      },
-      kind: result.kind,
-      reason: result.reason,
-      textHash: digest(result.text),
-      compacted: compacted ?? null,
-      sessionMemory: true,
-      ...(parent ? { parent } : {}),
-      readOnly: agent.session.header.origin === 'subagent' && !config.subagentWrite,
-      disabled: !policy.enabled,
-      clean: !policy.inheritWorkspace,
-      policyReadOnly: !policy.writable,
-    });
     if (result.kind === 'none') return decision;
     const stash: ResidentRecord = {
       v: 1,

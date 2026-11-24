@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import { createHarnessFixture, runNode } from '../packages/devtools/src/harness.ts';
+import { digest } from '../packages/plugin/src/adapters/revision.ts';
 import { reconcile } from '../packages/devtools/src/reconcile.ts';
 
 it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async () => {
@@ -23,11 +24,10 @@ it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async ()
     await fixture.cli('--profile', 'test', '--from-default-profile', 'sdk', '--dump-config');
     await fixture.cli('plugin', '--profile', 'test', 'add', resolve('packages/plugin'));
     const harness = fixture.sdk(mock.baseURL);
-    const sessionIds: string[] = [];
-    let workspaceId = '';
+    let sessionId = '';
     try {
       const session = harness.session();
-      sessionIds.push(session.id);
+      sessionId = session.id;
       expect((await session.run('记住：以后提交信息使用简体中文。')).finalResponse).toBe(
         'stash e2e ok',
       );
@@ -42,7 +42,6 @@ it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async ()
       expect(second).not.toContain('Replace the previous workspace rules');
       const dirs = await readdir(join(fixture.home, 'memory'), { withFileTypes: true });
       const workspace = dirs.find((d) => d.isDirectory() && !d.name.startsWith('.'))!.name;
-      workspaceId = workspace;
       const rulePath = join(fixture.home, 'memory', workspace, 'RULES.md');
       expect(await readFile(rulePath, 'utf8')).toBe('- 提交信息使用简体中文。');
       await writeFile(rulePath, '- 提交信息使用简体中文。\n- 简单文案不跑全量测试。');
@@ -50,7 +49,6 @@ it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async ()
       expect(JSON.stringify(mock.requests.at(-1)!.body)).toContain('<memory-context-update>');
       expect(JSON.stringify(mock.requests.at(-1)!.body)).toContain('简单文案不跑全量测试');
       const other = harness.session();
-      sessionIds.push(other.id);
       await other.run('新会话');
       const last = mock.requests.at(-1)!.body as { tools: unknown; system: unknown };
       const original = mock.requests[0]!.body as { tools: unknown; system: unknown };
@@ -63,12 +61,15 @@ it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async ()
       expect(compacted).toContain('<memory-context>');
       expect(compacted).toContain('were compacted into a summary');
       expect(compacted).toContain('简单文案不跑全量测试');
+      const files = await readdir(join(fixture.home, 'memory', workspace));
+      expect(files).toContain('.journal.jsonl');
+      expect(files.filter((name) => name.startsWith('.decisions-'))).toEqual([]);
     } finally {
       await harness.close();
     }
     const resumed = fixture.sdk(mock.baseURL);
     try {
-      await (await resumed.resumeSession(sessionIds[0]!)).run('重启后继续');
+      await (await resumed.resumeSession(sessionId)).run('重启后继续');
       const request = JSON.stringify(mock.requests.at(-1)!.body);
       expect(request.match(/<memory-context>/gu)).toHaveLength(1);
       expect(request).toContain('简单文案不跑全量测试');
@@ -88,39 +89,13 @@ it('真实 SDK 工具写入、外部编辑、跨会话和压缩恢复', async ()
     } finally {
       await isolated.close();
     }
-    for (const id of sessionIds) {
-      expect(
-        await reconcile(
-          join(fixture.home, 'memory'),
-          workspaceId,
-          join(fixture.home, 'sessions'),
-          id,
-        ),
-      ).toEqual(expect.arrayContaining([expect.stringContaining('OK ')]));
-    }
-    const auditPath = join(
-      fixture.home,
-      'memory',
-      workspaceId,
-      '.decisions-' + sessionIds[0] + '.jsonl',
-    );
-    const audit = await readFile(auditPath, 'utf8');
-    await writeFile(auditPath, audit.replace('missing-snapshot', 'tampered-reason'));
-    await expect(
-      reconcile(
-        join(fixture.home, 'memory'),
-        workspaceId,
-        join(fixture.home, 'sessions'),
-        sessionIds[0]!,
-      ),
-    ).rejects.toThrow('决策重放不一致');
   } finally {
     await mock.close();
     await fixture.close();
   }
 });
 
-it('模型请求期间的外部编辑在自身写入后补发，重启重放保持一致', async () => {
+it('外部编辑在自身写入后补发，续聊仍可离线重放旧决策', async () => {
   const fixture = await createHarnessFixture();
   let rulePath = '';
   let edited = false;
@@ -143,13 +118,50 @@ it('模型请求期间的外部编辑在自身写入后补发，重启重放保�
     const harness = fixture.sdk(mock.baseURL);
     let sessionId = '';
     let workspaceId = '';
+    let auditPath = '';
+    let legacyRecord = '';
+    let beforeSeq = 0;
     try {
       const session = harness.session();
       sessionId = session.id;
-      await session.run('建立会话');
+      const first = await session.run('建立会话');
       const dirs = await readdir(join(fixture.home, 'memory'), { withFileTypes: true });
       workspaceId = dirs.find((d) => d.isDirectory() && !d.name.startsWith('.'))!.name;
-      rulePath = join(fixture.home, 'memory', workspaceId, 'RULES.md');
+      const directory = join(fixture.home, 'memory', workspaceId);
+      auditPath = join(directory, '.decisions-' + sessionId + '.jsonl');
+      const injection = first.events.find(
+        (event) => event.type === 'user/message' && event.data.source.kind === 'stash-memory',
+      );
+      if (injection?.type !== 'user/message') throw new Error('首个请求缺少记忆快照');
+      beforeSeq = first.events.find((event) => event.type === 'step/start')!.seq;
+      legacyRecord =
+        JSON.stringify({
+          v: 1,
+          sessionId,
+          beforeSeq,
+          journalId: null,
+          config: {
+            rulesBudgetTokens: 1600,
+            indexBudgetTokens: 1600,
+            viewBudgetTokens: 4000,
+            externalRuleUpdates: 'next-request',
+          },
+          kind: 'full',
+          reason: 'missing-snapshot',
+          textHash: digest(
+            injection.data.content
+              .map((block) => (block.type === 'text' ? block.text : ''))
+              .join(''),
+          ),
+          compacted: null,
+          sessionMemory: true,
+          readOnly: false,
+          disabled: false,
+          clean: false,
+          policyReadOnly: false,
+        }) + '\n';
+      await writeFile(auditPath, legacyRecord, { flag: 'wx' });
+      rulePath = join(directory, 'RULES.md');
       await writeFile(rulePath, '- 已知规则');
       await session.run('追加本次模型规则');
       expect(edited).toBe(true);
@@ -170,14 +182,17 @@ it('模型请求期间的外部编辑在自身写入后补发，重启重放保�
     } finally {
       await resumed.close();
     }
-    expect(
-      await reconcile(
+    expect(await readFile(auditPath, 'utf8')).toBe(legacyRecord);
+    const replay = () =>
+      reconcile(
         join(fixture.home, 'memory'),
         workspaceId,
         join(fixture.home, 'sessions'),
         sessionId,
-      ),
-    ).toEqual(expect.arrayContaining([expect.stringContaining('OK ')]));
+      );
+    expect(await replay()).toEqual([`OK ${beforeSeq} full missing-snapshot`]);
+    await writeFile(auditPath, legacyRecord.replace('missing-snapshot', 'tampered-reason'));
+    await expect(replay()).rejects.toThrow('决策重放不一致');
   } finally {
     await mock.close();
     await fixture.close();

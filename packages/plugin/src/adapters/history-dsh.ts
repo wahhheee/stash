@@ -168,7 +168,6 @@ export class DshHistory implements HistoryPort, WorkspacePort {
       })(),
       started: session.events.some((event) => event.type === 'system/message'),
       files: commitFiles(session.memory()),
-      beforeSeq: session.events.length,
     }));
   }
 

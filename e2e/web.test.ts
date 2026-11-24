@@ -15,7 +15,6 @@ import type {
   PageAction,
   PageMutationResult,
 } from '../packages/plugin/src/page-types.ts';
-import { reconcile } from '../packages/devtools/src/reconcile.ts';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
@@ -152,14 +151,6 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
       expect(readonly).toContain('Memory is read-only');
       await change({ op: 'switches', scope: 'session', value: DEFAULT_SWITCHES });
       await prompt();
-      expect(
-        await reconcile(
-          join(fixture.home, 'memory'),
-          initial.workspaceId,
-          join(fixture.home, 'sessions'),
-          sessionId,
-        ),
-      ).toEqual(expect.arrayContaining([expect.stringContaining('OK ')]));
       const execute = (line: string) =>
         invoke<{ result: { kind: string; text: string } }>('commands/execute', {
           agentId: sessionId,
@@ -169,6 +160,10 @@ it('真实 Web 加载客户端模块并通过认证 Gateway 读取状态', async
       expect((await execute('/stash status')).result).toMatchObject({
         kind: 'success',
         text: expect.stringContaining('stash ' + manifest.version),
+      });
+      expect((await execute('/stash explain 1')).result).toMatchObject({
+        kind: 'success',
+        text: expect.stringContaining('memory-policy-changed'),
       });
       const bundle = await execute('/stash doctor --bundle');
       expect(bundle.result.kind).toBe('success');

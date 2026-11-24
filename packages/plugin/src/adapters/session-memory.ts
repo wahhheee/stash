@@ -203,10 +203,6 @@ export class SessionMemoryStore implements MemoryBackend {
     return this.pending.reduce(foldCommit, this.stateOf());
   }
 
-  async observe() {
-    return { files: commitFiles(this.state()), journalId: null };
-  }
-
   async snapshot() {
     return commitFiles(this.state());
   }
